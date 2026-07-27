@@ -1,0 +1,16 @@
+# env
+.env
+.env.local
+.env*.local
+
+# node
+node_modules/
+
+# logs
+*.log
+
+# OS
+.DS_Store
+
+# n8n / docker volumes locais (caso monte em pastas)
+.n8n/
