@@ -11,6 +11,12 @@
 
 ## 0. Decisões de stack (resumo executivo)
 
+> **Decisões confirmadas pelo time (2026-07):** (1) backend próprio em **NestJS**,
+> tirando o n8n do caminho crítico; (2) **PostgreSQL gerenciado** acessado via
+> Prisma (RLS + pgvector); (3) **IA multi-provider** (Claude + OpenAI),
+> selecionável por tenant.
+
+
 | Camada | Escolha | Por quê |
 |---|---|---|
 | Backend | **NestJS (TypeScript)** | Módulos + DI + Guards/Interceptors, WebSocket Gateway nativo, integração BullMQ, testável, escala em times |
@@ -21,7 +27,7 @@
 | Cache/PubSub | **Redis 7** | Cache, sessões, adapter Socket.IO, locks, presença, rate-limit |
 | Realtime | **Socket.IO** (+ Redis adapter) | Rooms por org/conversa, escala horizontal |
 | Storage | **S3-compatível** (Cloudflare R2 / AWS S3 / MinIO) | Mídia do WhatsApp, presigned URLs |
-| IA | **Anthropic Claude** (abstração de provider) | Agente conversacional + triagem + RAG + tools |
+| IA | **Multi-provider (Claude + OpenAI)**, configurável por tenant | Agente + triagem + RAG + tools, sem lock-in de fornecedor |
 | Gateway WhatsApp | **Evolution API** (self-hosted) | Multi-instância, webhooks, envio de mídia |
 | Monorepo | **pnpm workspaces + Turborepo** | Código compartilhado tipado entre api/web/worker |
 
@@ -47,7 +53,8 @@ Blocos e responsabilidades:
 - **Object Storage (S3)** — mídia (inbound e outbound), documentos de RAG.
 - **Evolution API** — uma ou mais instâncias; cada número de WhatsApp de um
   tenant é uma "instance" do Evolution. Emite webhooks; recebe comandos de envio.
-- **Provider de IA (Claude)** — chamado apenas pelos workers, atrás de abstração.
+- **Provider de IA (Claude / OpenAI)** — chamado apenas pelos workers, atrás de
+  uma abstração; o provider/modelo é escolhido por tenant.
 
 Fluxo de dados de alto nível:
 
@@ -342,19 +349,34 @@ CDN na frente para leitura.
 
 ---
 
-## 12. Estratégia de IA
+## 12. Estratégia de IA (multi-provider)
 
-**Abstração:** pacote `packages/ai` com interface `LlmProvider` (chat, stream,
-embeddings, tool-calling). Provider padrão: **Anthropic Claude**. Trocar/comparar
-providers não afeta o domínio.
+**Abstração:** pacote `packages/ai` com interface única `LlmProvider` (chat,
+stream, embeddings, tool-calling) e um **registry** de providers. Implementações
+para **Anthropic (Claude)** e **OpenAI (GPT)** desde o início; adicionar outro
+provider é só implementar a interface. O domínio (agente, RAG, handoff) **não
+conhece o fornecedor**.
 
-**Tiers de modelo (custo × capacidade):**
-- **Triagem/classificação/roteamento:** modelo rápido e barato (ex.: Claude Haiku)
-  — detecta intenção, idioma, urgência, decide fila/atribuição.
-- **Agente conversacional principal:** Claude Sonnet — responde ao cliente com RAG
-  e tools.
-- **Casos complexos/escalonados:** Claude Opus quando a confiança é baixa ou o
-  supervisor solicita.
+**Seleção por tenant (config no banco):** cada organização (e cada canal/agente)
+define `provider` + `model` + parâmetros (temperatura, system prompt, tools,
+limites). Isso permite: preferência do cliente, compliance/residência de dados,
+otimização de custo e **failover** entre providers.
+
+**Normalização entre providers:** a abstração unifica formatos de mensagens,
+**tool-calling** (function calling do OpenAI ↔ tools do Claude), streaming e
+contagem de tokens, expondo um contrato estável ao restante do sistema. Também
+padroniza **embeddings** (o provider de embeddings pode ser diferente do de chat).
+
+**Tiers de modelo (custo × capacidade), mapeados por provider:**
+- **Triagem/classificação/roteamento:** modelo rápido/barato (ex.: Claude Haiku
+  ou GPT-mini) — detecta intenção, idioma, urgência, decide fila/atribuição.
+- **Agente conversacional principal:** modelo intermediário (ex.: Claude Sonnet
+  ou GPT padrão) — responde ao cliente com RAG e tools.
+- **Casos complexos/escalonados:** modelo top (ex.: Claude Opus ou GPT topo)
+  quando a confiança é baixa ou o supervisor solicita.
+
+**Resiliência:** se o provider primário do tenant falhar/atingir limite, a
+abstração faz **fallback** para um secundário configurado, registrando o desvio.
 
 **RAG (base de conhecimento por tenant):**
 - Ingestão: documento → chunking → **embeddings** → `pgvector` (isolado por org).
