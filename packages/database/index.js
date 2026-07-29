@@ -1,19 +1,35 @@
 'use strict';
 
-// Singleton do Prisma Client compartilhado por api e workers.
-// Evita esgotar o pool recriando o client em hot-reload de desenvolvimento.
+// Singleton do Prisma Client compartilhado por api e workers, JÁ com o guard
+// de isolamento multi-tenant aplicado (ver tenant-context.js).
 const { PrismaClient, Prisma } = require('@prisma/client');
+const {
+  applyTenantGuard,
+  runWithTenant,
+  runAsSystem,
+  getTenantContext,
+} = require('./tenant-context');
 
 const globalForPrisma = globalThis;
 
-const prisma =
-  globalForPrisma.__whatsBootPrisma ||
-  new PrismaClient({
+function createClient() {
+  const base = new PrismaClient({
     log: process.env.NODE_ENV === 'production' ? ['warn', 'error'] : ['query', 'warn', 'error'],
   });
+  return applyTenantGuard(base);
+}
+
+const prisma = globalForPrisma.__whatsBootPrisma || createClient();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.__whatsBootPrisma = prisma;
 }
 
-module.exports = { prisma, PrismaClient, Prisma };
+module.exports = {
+  prisma,
+  PrismaClient,
+  Prisma,
+  runWithTenant,
+  runAsSystem,
+  getTenantContext,
+};

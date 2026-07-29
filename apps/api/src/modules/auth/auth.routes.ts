@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { validateBody } from '../../middlewares/validate';
 import { authenticate } from '../../middlewares/authenticate';
+import { tenantContext } from '../../middlewares/tenantContext';
 import { requireRoles } from '../../middlewares/authorize';
 import { authRateLimit } from '../../middlewares/authRateLimit';
 import { ROLE_KEYS } from './rbac';
@@ -40,10 +41,16 @@ authRouter.post(
   resetPasswordController,
 );
 
-// --- Protegidas ---
-authRouter.get('/me', authenticate, meController);
+// --- Protegidas (autenticação + contexto de tenant) ---
+authRouter.get('/me', authenticate, tenantContext, meController);
 
 // Exemplo de rota protegida por papel (demonstra o guard de RBAC).
-authRouter.get('/admin/ping', authenticate, requireRoles(ROLE_KEYS.ADMIN), (_req, res) => {
-  res.json({ ok: true, scope: 'admin-only' });
-});
+authRouter.get(
+  '/admin/ping',
+  authenticate,
+  tenantContext,
+  requireRoles(ROLE_KEYS.ADMIN),
+  (_req, res) => {
+    res.json({ ok: true, scope: 'admin-only' });
+  },
+);
