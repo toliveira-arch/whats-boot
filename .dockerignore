@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/build
+**/.next
+**/generated
+.git
+.github
+*.log
+.env
+**/.env
+**/.env.local
+infra/legacy-sprint1
+coverage
+.turbo
+.eslintcache

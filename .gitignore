@@ -1,16 +1,29 @@
+# dependências
+node_modules/
+
+# builds
+dist/
+build/
+apps/web/dist/
+apps/api/dist/
+
+# prisma client gerado
+**/generated/
+packages/database/node_modules/
+
 # env
 .env
 .env.local
 .env*.local
 
-# node
-node_modules/
-
 # logs
 *.log
+logs/
 
-# OS
+# cache / ferramentas
+.turbo/
+.eslintcache
+coverage/
+
+# SO
 .DS_Store
-
-# n8n / docker volumes locais (caso monte em pastas)
-.n8n/

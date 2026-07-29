@@ -4,19 +4,19 @@ Schema Prisma + migrations + client compartilhado (PostgreSQL, multi-tenant).
 
 ## Modelo de dados (47 tabelas)
 
-| Grupo | Tabelas |
-|---|---|
-| **Tenancy / Billing** | `Tenant`, `Plan`, `Subscription` |
-| **Identidade / Auth** | `User`, `RefreshToken`, `VerificationToken`, `Invitation` |
-| **RBAC** | `Role`, `Permission`, `RolePermission`, `Membership`, `AgentProfile`, `MembershipCompany` |
-| **Empresas / Times / Config** | `Company`, `CompanySettings`, `TenantSettings`, `Setting`, `BusinessHour`, `Team`, `TeamMember` |
-| **Canais WhatsApp** | `EvolutionInstance` |
-| **Contatos / Tags** | `Contact`, `Tag`, `ContactTag`, `ConversationTag` |
-| **Conversas / Mensagens** | `Conversation`, `Message`, `MessageStatusEvent`, `ConversationEvent` |
-| **Notas / Follow-up / Agenda** | `Note`, `FollowUp`, `Appointment`, `ScheduledMessage` |
-| **IA / Prompts / RAG** | `AiAgent`, `Prompt`, `PromptVersion`, `AiCredential`, `AiUsageLog`, `KnowledgeBase`, `KnowledgeDocument`, `KnowledgeChunk` |
-| **Arquivos / Uploads** | `File`, `Upload` |
-| **Logs / Auditoria / Webhooks / Notificações** | `AuditLog`, `SystemLog`, `WebhookEvent`, `Notification` |
+| Grupo                                          | Tabelas                                                                                                                    |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Tenancy / Billing**                          | `Tenant`, `Plan`, `Subscription`                                                                                           |
+| **Identidade / Auth**                          | `User`, `RefreshToken`, `VerificationToken`, `Invitation`                                                                  |
+| **RBAC**                                       | `Role`, `Permission`, `RolePermission`, `Membership`, `AgentProfile`, `MembershipCompany`                                  |
+| **Empresas / Times / Config**                  | `Company`, `CompanySettings`, `TenantSettings`, `Setting`, `BusinessHour`, `Team`, `TeamMember`                            |
+| **Canais WhatsApp**                            | `EvolutionInstance`                                                                                                        |
+| **Contatos / Tags**                            | `Contact`, `Tag`, `ContactTag`, `ConversationTag`                                                                          |
+| **Conversas / Mensagens**                      | `Conversation`, `Message`, `MessageStatusEvent`, `ConversationEvent`                                                       |
+| **Notas / Follow-up / Agenda**                 | `Note`, `FollowUp`, `Appointment`, `ScheduledMessage`                                                                      |
+| **IA / Prompts / RAG**                         | `AiAgent`, `Prompt`, `PromptVersion`, `AiCredential`, `AiUsageLog`, `KnowledgeBase`, `KnowledgeDocument`, `KnowledgeChunk` |
+| **Arquivos / Uploads**                         | `File`, `Upload`                                                                                                           |
+| **Logs / Auditoria / Webhooks / Notificações** | `AuditLog`, `SystemLog`, `WebhookEvent`, `Notification`                                                                    |
 
 ## Convenções
 

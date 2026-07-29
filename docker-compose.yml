@@ -1,126 +1,98 @@
-name: whats-boot-sprint1
+name: whats-boot
 
-# Sprint 1 — Infraestrutura mínima para validar o fluxo:
-# WhatsApp -> Evolution API -> Webhook -> n8n -> Supabase -> Painel Next.js
+# Ambiente de DESENVOLVIMENTO.
+# Sobe: PostgreSQL, Redis, API (Express) e Web (Vite). Nginx só em produção
+# (ver infra/compose/docker-compose.prod.yml).
 #
-# Este compose sobe: Evolution API (+ Postgres + Redis) e n8n.
-# O Supabase roda na nuvem (supabase.com) e o Painel Next.js roda via `npm run dev`.
-#
-# Suba tudo com:  docker compose up -d
-# Veja os logs:   docker compose logs -f evolution-api n8n
+#   cp .env.example .env
+#   docker compose up -d
+#   docker compose logs -f api web
 
 services:
-  # ---------------------------------------------------------------------------
-  # PostgreSQL — banco interno usado pelo Evolution API
-  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: wb-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-evolution}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-evolution}
-      POSTGRES_DB: ${POSTGRES_DB:-evolution}
+      POSTGRES_USER: ${POSTGRES_USER:-whatsboot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-whatsboot}
+      POSTGRES_DB: ${POSTGRES_DB:-whatsboot}
+    ports:
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evolution}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-whatsboot}']
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - whats-boot
 
-  # ---------------------------------------------------------------------------
-  # Redis — cache de sessão usado pelo Evolution API
-  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: wb-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
+    ports:
+      - '6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - whats-boot
 
-  # ---------------------------------------------------------------------------
-  # Evolution API — gateway do WhatsApp. Emite o webhook a cada mensagem.
-  # Painel/manager: http://localhost:8080/manager
-  # ---------------------------------------------------------------------------
-  evolution-api:
-    image: atendai/evolution-api:v2.1.1
-    container_name: wb-evolution-api
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+      target: dev
+    container_name: wb-api
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "8080:8080"
     environment:
-      # Chave global de autenticação da Evolution (usada no header `apikey`)
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-change-me-evolution-key}
-      # URL pública do próprio servidor
-      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
-      # Banco de dados
-      DATABASE_ENABLED: "true"
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-evolution}:${POSTGRES_PASSWORD:-evolution}@postgres:5432/${POSTGRES_DB:-evolution}?schema=public
-      DATABASE_CONNECTION_CLIENT_NAME: evolution
-      DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
-      DATABASE_SAVE_DATA_CONTACTS: "true"
-      DATABASE_SAVE_DATA_CHATS: "true"
-      # Cache
-      CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://redis:6379/0
-      CACHE_REDIS_PREFIX_KEY: evolution
-      CACHE_REDIS_SAVE_INSTANCES: "true"
-      CACHE_LOCAL_ENABLED: "false"
-      # Webhook global desligado — configuramos o webhook por instância (ver docs/SETUP.md)
-      WEBHOOK_GLOBAL_ENABLED: "false"
-      # Log
-      LOG_LEVEL: ERROR,WARN,INFO
-      LOG_COLOR: "true"
+      NODE_ENV: development
+      API_PORT: 3333
+      API_HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-whatsboot}:${POSTGRES_PASSWORD:-whatsboot}@postgres:5432/${POSTGRES_DB:-whatsboot}?schema=public
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: http://localhost:5173
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh}
+    ports:
+      - '3333:3333'
     volumes:
-      - evolution_instances:/evolution/instances
+      - ./apps/api:/app/apps/api
+      - ./packages:/app/packages
+      - /app/node_modules
     networks:
       - whats-boot
 
-  # ---------------------------------------------------------------------------
-  # n8n — recebe o webhook do Evolution e grava a mensagem no Supabase.
-  # Editor: http://localhost:5678
-  # ---------------------------------------------------------------------------
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: wb-n8n
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      target: dev
+    container_name: wb-web
     restart: unless-stopped
-    ports:
-      - "5678:5678"
+    depends_on:
+      - api
     environment:
-      N8N_HOST: ${N8N_HOST:-localhost}
-      N8N_PORT: "5678"
-      N8N_PROTOCOL: http
-      # URL que o n8n usa para montar as URLs de webhook (produção)
-      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
-      GENERIC_TIMEZONE: ${TZ:-America/Sao_Paulo}
-      N8N_DIAGNOSTICS_ENABLED: "false"
-      N8N_RUNNERS_ENABLED: "true"
-      # Permite ler process.env dentro de nós (usamos para as credenciais do Supabase)
-      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
-      # Credenciais do Supabase disponibilizadas ao workflow via $env
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      VITE_API_URL: http://localhost:3333
+      VITE_SOCKET_URL: http://localhost:3333
+    ports:
+      - '5173:5173'
     volumes:
-      - n8n_data:/home/node/.n8n
+      - ./apps/web:/app/apps/web
+      - /app/node_modules
     networks:
       - whats-boot
 
@@ -131,5 +103,3 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  evolution_instances:
-  n8n_data:

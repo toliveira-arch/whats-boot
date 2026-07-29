@@ -16,20 +16,19 @@
 > Prisma (RLS + pgvector); (3) **IA multi-provider** (Claude + OpenAI),
 > selecionável por tenant.
 
-
-| Camada | Escolha | Por quê |
-|---|---|---|
-| Backend | **NestJS (TypeScript)** | Módulos + DI + Guards/Interceptors, WebSocket Gateway nativo, integração BullMQ, testável, escala em times |
-| Frontend | **Next.js 15 (App Router) + React 19** | Já iniciado; SSR/streaming, ecossistema maduro |
-| ORM | **Prisma** | Migrations versionadas, type-safety, Client Extensions para multi-tenant |
-| Banco | **PostgreSQL 16** (+ pgvector) | Relacional forte, RLS, particionamento, embeddings para RAG |
-| Fila | **BullMQ** (sobre Redis) | Retries/backoff, rate-limit por número, ordering por conversa |
-| Cache/PubSub | **Redis 7** | Cache, sessões, adapter Socket.IO, locks, presença, rate-limit |
-| Realtime | **Socket.IO** (+ Redis adapter) | Rooms por org/conversa, escala horizontal |
-| Storage | **S3-compatível** (Cloudflare R2 / AWS S3 / MinIO) | Mídia do WhatsApp, presigned URLs |
-| IA | **Multi-provider (Claude + OpenAI)**, configurável por tenant | Agente + triagem + RAG + tools, sem lock-in de fornecedor |
-| Gateway WhatsApp | **Evolution API** (self-hosted) | Multi-instância, webhooks, envio de mídia |
-| Monorepo | **pnpm workspaces + Turborepo** | Código compartilhado tipado entre api/web/worker |
+| Camada           | Escolha                                                       | Por quê                                                                                                    |
+| ---------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Backend          | **NestJS (TypeScript)**                                       | Módulos + DI + Guards/Interceptors, WebSocket Gateway nativo, integração BullMQ, testável, escala em times |
+| Frontend         | **Next.js 15 (App Router) + React 19**                        | Já iniciado; SSR/streaming, ecossistema maduro                                                             |
+| ORM              | **Prisma**                                                    | Migrations versionadas, type-safety, Client Extensions para multi-tenant                                   |
+| Banco            | **PostgreSQL 16** (+ pgvector)                                | Relacional forte, RLS, particionamento, embeddings para RAG                                                |
+| Fila             | **BullMQ** (sobre Redis)                                      | Retries/backoff, rate-limit por número, ordering por conversa                                              |
+| Cache/PubSub     | **Redis 7**                                                   | Cache, sessões, adapter Socket.IO, locks, presença, rate-limit                                             |
+| Realtime         | **Socket.IO** (+ Redis adapter)                               | Rooms por org/conversa, escala horizontal                                                                  |
+| Storage          | **S3-compatível** (Cloudflare R2 / AWS S3 / MinIO)            | Mídia do WhatsApp, presigned URLs                                                                          |
+| IA               | **Multi-provider (Claude + OpenAI)**, configurável por tenant | Agente + triagem + RAG + tools, sem lock-in de fornecedor                                                  |
+| Gateway WhatsApp | **Evolution API** (self-hosted)                               | Multi-instância, webhooks, envio de mídia                                                                  |
+| Monorepo         | **pnpm workspaces + Turborepo**                               | Código compartilhado tipado entre api/web/worker                                                           |
 
 Princípios: **multi-tenant desde o primeiro dia**, **idempotência** em toda
 ingestão, **defense-in-depth** (guard na aplicação + RLS no banco), **filas para
@@ -143,6 +142,7 @@ negócio) → `Repository` (acesso a dados via Prisma) → `Processor` (BullMQ).
 membership) → `RolesGuard`/`PermissionsGuard` (RBAC) → `Controller`.
 
 **Cross-cutting (common/):**
+
 - `HttpExceptionFilter` — formato de erro padronizado (RFC 7807-like).
 - `LoggingInterceptor` + `pino` — request-id, org-id, latência.
 - `ZodValidationPipe` / `class-validator` — validação de entrada.
@@ -150,6 +150,7 @@ membership) → `RolesGuard`/`PermissionsGuard` (RBAC) → `Controller`.
 - `@CurrentUser()`, `@CurrentOrg()`, `@Roles()` — decorators.
 
 **Dois modos de execução (mesmo código):**
+
 - `main.ts` → sobe o servidor HTTP + WebSocket (recebe webhooks, serve o painel).
 - `worker.ts` → registra os `Processors` do BullMQ, sem abrir porta HTTP.
 - Deploy independente: os workers escalam conforme a carga de IA/envio.
@@ -197,6 +198,7 @@ muitos tenants pequenos/médios, com **defense-in-depth**:
    do usuário + org selecionada (header `X-Org-Id` ou subdomínio `org.app.com`).
 
 **Isolamento operacional adicional:**
+
 - Rooms de WebSocket sempre prefixadas por `org:{id}`.
 - Chaves de Redis e prefixos de storage sempre com `orgId`.
 - Filas com `jobId`/dados carregando `organizationId`; workers reaplicam o
@@ -223,7 +225,7 @@ muitos tenants pequenos/médios, com **defense-in-depth**:
   read), `conversation.updated` (status/atribuição), `conversation.assigned`,
   `typing`, `presence`, `channel.qrcode`, `channel.status`, `ai.suggestion`.
 - **Eventos client→server:** `conversation.subscribe/unsubscribe`, `typing.start/
-  stop`, `presence.ping`.
+stop`, `presence.ping`.
 - **Presença:** heartbeat gravado em Redis com TTL; supervisor vê agentes online.
 - **Autorização por evento:** ao entrar numa `conversation:{id}`, o gateway
   revalida se o usuário pode ver aquela conversa (mesma policy do REST).
@@ -237,16 +239,16 @@ muitos tenants pequenos/médios, com **defense-in-depth**:
 Um Redis (com réplicas / ou Cluster em produção) para múltiplos papéis, com
 **prefixos de chave** e, idealmente, **DBs/namespaces** separados por função:
 
-| Uso | Padrão de chave | Observação |
-|---|---|---|
-| Cache de leitura | `cache:{org}:{entity}:{id}` | TTL curto; invalidação em escrita |
-| Sessão / refresh allowlist | `session:{userId}:{jti}` | Revogação de refresh tokens |
-| BullMQ | (gerenciado pela lib) | Instância/DB dedicada recomendada |
-| Socket.IO adapter | (gerenciado) | Pub/Sub entre nós |
-| Presença | `presence:{org}:{userId}` | TTL + heartbeat |
-| Rate-limit | `ratelimit:{scope}:{key}` | Token bucket (API e envio WhatsApp) |
-| Locks distribuídos | `lock:conversation:{id}` | Ordenação/atribuição sem corrida |
-| Idempotência | `idemp:{hash}` | Dedupe de webhooks e comandos |
+| Uso                        | Padrão de chave             | Observação                          |
+| -------------------------- | --------------------------- | ----------------------------------- |
+| Cache de leitura           | `cache:{org}:{entity}:{id}` | TTL curto; invalidação em escrita   |
+| Sessão / refresh allowlist | `session:{userId}:{jti}`    | Revogação de refresh tokens         |
+| BullMQ                     | (gerenciado pela lib)       | Instância/DB dedicada recomendada   |
+| Socket.IO adapter          | (gerenciado)                | Pub/Sub entre nós                   |
+| Presença                   | `presence:{org}:{userId}`   | TTL + heartbeat                     |
+| Rate-limit                 | `ratelimit:{scope}:{key}`   | Token bucket (API e envio WhatsApp) |
+| Locks distribuídos         | `lock:conversation:{id}`    | Ordenação/atribuição sem corrida    |
+| Idempotência               | `idemp:{hash}`              | Dedupe de webhooks e comandos       |
 
 - **Locks (Redlock)** para: garantir ordem por conversa, evitar dupla atribuição,
   serializar provisionamento de instância Evolution.
@@ -259,21 +261,22 @@ Um Redis (com réplicas / ou Cluster em produção) para múltiplos papéis, com
 
 **Filas (todas com `organizationId` no payload e idempotência):**
 
-| Fila | Produtor | Consumidor faz | Política |
-|---|---|---|---|
-| `inbound.messages` | Webhook controller | Normaliza, persiste, decide rota (IA vs humano) | FIFO por conversa (lock) |
-| `ai.process` | inbound worker | RAG + chamada ao Claude + tools + resposta | retry 3x, backoff exp., timeout |
-| `outbound.messages` | api/worker | Envia via Evolution (texto/mídia) | **rate-limit por número** |
-| `media.download` | inbound worker | Baixa mídia do WhatsApp → S3 | retry, dedupe por waMessageId |
-| `knowledge.embed` | knowledge module | Chunk + embeddings → pgvector | batch, backoff |
-| `webhook.status` | Evolution webhook | Atualiza status sent/delivered/read | idempotente |
-| `billing.usage` | ai/outbound workers | Contabiliza tokens/mensagens | agregação |
+| Fila                | Produtor            | Consumidor faz                                  | Política                        |
+| ------------------- | ------------------- | ----------------------------------------------- | ------------------------------- |
+| `inbound.messages`  | Webhook controller  | Normaliza, persiste, decide rota (IA vs humano) | FIFO por conversa (lock)        |
+| `ai.process`        | inbound worker      | RAG + chamada ao Claude + tools + resposta      | retry 3x, backoff exp., timeout |
+| `outbound.messages` | api/worker          | Envia via Evolution (texto/mídia)               | **rate-limit por número**       |
+| `media.download`    | inbound worker      | Baixa mídia do WhatsApp → S3                    | retry, dedupe por waMessageId   |
+| `knowledge.embed`   | knowledge module    | Chunk + embeddings → pgvector                   | batch, backoff                  |
+| `webhook.status`    | Evolution webhook   | Atualiza status sent/delivered/read             | idempotente                     |
+| `billing.usage`     | ai/outbound workers | Contabiliza tokens/mensagens                    | agregação                       |
 
 **Regras transversais:**
+
 - **Idempotência:** `jobId = waMessageId` (ou hash) evita processar 2x o mesmo
   webhook (Evolution pode reenviar).
 - **Ordenação por conversa:** processa uma mensagem por conversa por vez usando
-  lock em `lock:conversation:{id}` (ou BullMQ *groups*), preservando a ordem.
+  lock em `lock:conversation:{id}` (ou BullMQ _groups_), preservando a ordem.
 - **Rate-limit anti-ban:** `outbound.messages` limitada por número de WhatsApp
   (ex.: N msgs/segundo) via limiter do BullMQ — proteção contra bloqueio da Meta.
 - **Retries + backoff exponencial**; após esgotar, vai para **DLQ** (fila de
@@ -313,7 +316,7 @@ Um Redis (com réplicas / ou Cluster em produção) para múltiplos papéis, com
   intervalo de tempo (mensal) e/ou por hash de `organizationId` para grandes
   volumes; índices locais por partição.
 - **Índices** guiados pelas queries do inbox: `(organizationId, conversationId,
-  createdAt)`, `(organizationId, status, assignedToId)`, busca por contato com
+createdAt)`, `(organizationId, status, assignedToId)`, busca por contato com
   `pg_trgm`.
 - **Read replicas** para relatórios/consultas pesadas (roteadas separadamente).
 - **Backups:** point-in-time recovery (PITR) + snapshots; testar restore.
@@ -368,6 +371,7 @@ contagem de tokens, expondo um contrato estável ao restante do sistema. Também
 padroniza **embeddings** (o provider de embeddings pode ser diferente do de chat).
 
 **Tiers de modelo (custo × capacidade), mapeados por provider:**
+
 - **Triagem/classificação/roteamento:** modelo rápido/barato (ex.: Claude Haiku
   ou GPT-mini) — detecta intenção, idioma, urgência, decide fila/atribuição.
 - **Agente conversacional principal:** modelo intermediário (ex.: Claude Sonnet
@@ -379,6 +383,7 @@ padroniza **embeddings** (o provider de embeddings pode ser diferente do de chat
 abstração faz **fallback** para um secundário configurado, registrando o desvio.
 
 **RAG (base de conhecimento por tenant):**
+
 - Ingestão: documento → chunking → **embeddings** → `pgvector` (isolado por org).
 - Runtime: embed da pergunta → retrieval top-k (filtro `organizationId`) → injeta
   no system prompt como contexto citável.
@@ -388,6 +393,7 @@ ex.: `consultar_pedido`, `abrir_ticket`, `agendar`, `transferir_para_humano`,
 `buscar_conhecimento`. Cada tool é um handler no backend com validação e permissão.
 
 **Modos de operação (config por org/canal):**
+
 - **Autopilot:** IA responde sozinha até um gatilho de handoff.
 - **Copiloto:** IA sugere resposta; atendente revisa/edita/envia (`ai.suggestion`).
 - **Off:** só humano.
@@ -434,6 +440,7 @@ moderação, e sempre um caminho de fallback para humano.
 ## 14. Fluxo completo de mensagens
 
 ### 14.1 Inbound (cliente → atendente/IA)
+
 ```
 1. Cliente envia msg no WhatsApp
 2. Evolution API captura → POST /webhooks/evolution/:channelId  (com segredo)
@@ -461,6 +468,7 @@ moderação, e sempre um caminho de fallback para humano.
 ```
 
 ### 14.2 Outbound (atendente → cliente)
+
 ```
 1. Atendente escreve no painel → POST /conversations/:id/messages (ou evento WS)
 2. API valida permissão (pode atuar nesta conversa?) → persiste Message(outbound,
@@ -498,20 +506,21 @@ a verdade final está no Postgres; o WebSocket é aceleração de UX.
 
 **Papéis (por organização):** `OWNER` > `ADMIN` > `SUPERVISOR` > `AGENT` > `VIEWER`.
 
-| Recurso / ação | OWNER | ADMIN | SUPERVISOR | AGENT | VIEWER |
-|---|:-:|:-:|:-:|:-:|:-:|
-| Billing / plano | ✅ | ➖ | — | — | — |
-| Gerenciar equipe/roles | ✅ | ✅ | — | — | — |
-| Configurar canais (WhatsApp) | ✅ | ✅ | — | — | — |
-| Configurar IA / base de conhecimento | ✅ | ✅ | ➖ | — | — |
-| Ver todas as conversas da org | ✅ | ✅ | ✅ | — | 👁️ |
-| Atender (responder) conversas | ✅ | ✅ | ✅ | ✅(atribuídas/fila) | — |
-| Reatribuir / transferir | ✅ | ✅ | ✅ | ➖ | — |
-| Relatórios | ✅ | ✅ | ✅ | ➖ | 👁️ |
+| Recurso / ação                       | OWNER | ADMIN | SUPERVISOR |        AGENT        | VIEWER |
+| ------------------------------------ | :---: | :---: | :--------: | :-----------------: | :----: |
+| Billing / plano                      |  ✅   |  ➖   |     —      |          —          |   —    |
+| Gerenciar equipe/roles               |  ✅   |  ✅   |     —      |          —          |   —    |
+| Configurar canais (WhatsApp)         |  ✅   |  ✅   |     —      |          —          |   —    |
+| Configurar IA / base de conhecimento |  ✅   |  ✅   |     ➖     |          —          |   —    |
+| Ver todas as conversas da org        |  ✅   |  ✅   |     ✅     |          —          |   👁️   |
+| Atender (responder) conversas        |  ✅   |  ✅   |     ✅     | ✅(atribuídas/fila) |   —    |
+| Reatribuir / transferir              |  ✅   |  ✅   |     ✅     |         ➖          |   —    |
+| Relatórios                           |  ✅   |  ✅   |     ✅     |         ➖          |   👁️   |
 
 (✅ total · ➖ parcial/configurável · 👁️ somente leitura · — sem acesso)
 
 **Aplicação:**
+
 - **Nível de rota:** `RolesGuard`/`PermissionsGuard` com decorator `@Roles()`/
   `@Permissions()`.
 - **Nível de recurso (policies):** ex. `AGENT` só acessa conversas atribuídas a ele
@@ -604,7 +613,7 @@ a verdade final está no Postgres; o WebSocket é aceleração de UX.
 
 1. **Sprint 1 (feito):** validação do fluxo (Evolution→n8n→Supabase→painel).
 2. **Sprint 2 — Fundação:** monorepo, Prisma+Postgres+RLS, Auth (JWT+refresh),
-   multi-tenant (extension+ALS), CI. *Sem WhatsApp ainda.*
+   multi-tenant (extension+ALS), CI. _Sem WhatsApp ainda._
 3. **Sprint 3 — Canais + Ingestão:** provisionamento Evolution, webhooks,
    BullMQ inbound/outbound, persistência de conversas/mensagens, WebSocket, inbox.
 4. **Sprint 4 — Mídia + Envio:** upload S3, download de mídia, envio texto/mídia,
@@ -612,4 +621,7 @@ a verdade final está no Postgres; o WebSocket é aceleração de UX.
 5. **Sprint 5 — IA:** abstração LLM, triagem, agente conversacional, RAG (pgvector),
    tools, handoff humano, copiloto, metering.
 6. **Sprint 6 — RBAC completo + Billing + Observabilidade + Hardening.**
+
+```
+
 ```

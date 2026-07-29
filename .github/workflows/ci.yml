@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Env fictícia — usada só para `prisma generate`/typecheck (não conecta ao banco).
+env:
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+  REDIS_URL: redis://localhost:6379
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm install
+
+      - name: Prisma generate
+        run: npm run db:generate
+
+      - name: Prisma validate
+        run: npm run db:validate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

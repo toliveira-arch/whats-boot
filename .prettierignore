@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+coverage
+**/generated/**
+packages/database/node_modules
+infra/legacy-sprint1
+pnpm-lock.yaml
+package-lock.json

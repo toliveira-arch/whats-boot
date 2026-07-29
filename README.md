@@ -1,80 +1,87 @@
-# whats-boot — Sprint 1
+# whats-boot
 
-Validação da comunicação entre **Evolution API → n8n → Supabase → Next.js**.
+SaaS de atendimento via WhatsApp com IA — **monorepo** (Express + React/Vite + Prisma).
 
-> **Escopo da Sprint 1:** provar que a infraestrutura funciona ponta-a-ponta.
-> Sem IA, sem CRM, sem autenticação, sem usuários, sem dashboard, sem
-> multiempresa, sem chat. Apenas: mensagem chega no WhatsApp e aparece no painel.
+> **Estado atual:** ETAPA 3 concluída — infraestrutura (sem funcionalidades).
+> A arquitetura completa está em [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> O andaime da Sprint 1 (n8n/Supabase/Next.js) foi movido para
+> `infra/legacy-sprint1/`.
 
----
-
-## Fluxo
+## Estrutura
 
 ```
-📱 WhatsApp
-   ▼
-🟢 Evolution API        (recebe a mensagem, dispara webhook)
-   ▼  HTTP POST
-🔵 n8n                  (recebe o webhook, mapeia os campos)
-   ▼  HTTP POST (REST)
-🟣 Supabase / Postgres  (grava em public.messages)
-   ▼  leitura (anon key)
-⚫ Painel Next.js       (lista as mensagens)
+whats-boot/
+├── apps/
+│   ├── api/            # Backend Express + TS (HTTP, Socket.IO, BullMQ, health)
+│   └── web/            # Frontend React + Vite + TS
+├── packages/
+│   └── database/       # Prisma (schema + client compartilhado)
+├── infra/
+│   ├── docker/         # Dockerfiles (api dev/build/prod, web dev)
+│   ├── nginx/          # Dockerfile + reverse proxy (prod)
+│   ├── compose/        # docker-compose.prod.yml
+│   └── legacy-sprint1/ # andaime da Sprint 1 (referência)
+├── .github/workflows/  # CI (lint, format, typecheck, build, prisma)
+├── docker-compose.yml  # ambiente de desenvolvimento
+└── docs/               # ARCHITECTURE.md, SETUP.md
 ```
 
----
+## Stack
 
-## Componentes
+| Camada    | Tecnologia                                           |
+| --------- | ---------------------------------------------------- |
+| Backend   | Node + Express + TypeScript                          |
+| Realtime  | Socket.IO (+ Redis adapter)                          |
+| Filas     | BullMQ (sobre Redis)                                 |
+| Frontend  | React + Vite + TypeScript                            |
+| ORM/Banco | Prisma + PostgreSQL 16 (pgvector)                    |
+| Cache     | Redis 7                                              |
+| Infra     | Docker, Docker Compose, Nginx                        |
+| Qualidade | ESLint, Prettier, Husky, lint-staged, GitHub Actions |
 
-| Pasta / arquivo | O que é |
-|---|---|
-| `docker-compose.yml` | Sobe Evolution API (+ Postgres + Redis) e n8n |
-| `.env.example` | Variáveis de ambiente da infraestrutura |
-| `supabase/migrations/0001_create_messages.sql` | Cria a tabela `messages` + RLS |
-| `n8n/workflow-sprint1.json` | Workflow importável: Webhook → Supabase |
-| `web/` | Painel Next.js (somente leitura) |
-| `docs/SETUP.md` | **Passo-a-passo de instalação, testes e checklist** |
+## Desenvolvimento
 
----
-
-## Início rápido
+### Com Docker (recomendado)
 
 ```bash
-# 1. Infra (Evolution + n8n)
-cp .env.example .env          # preencha EVOLUTION_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-docker compose up -d
-
-# 2. Supabase: rode o SQL de supabase/migrations/0001_create_messages.sql
-
-# 3. n8n (http://localhost:5678): importe n8n/workflow-sprint1.json e ative
-
-# 4. Evolution (http://localhost:8080/manager): crie a instância, conecte o
-#    WhatsApp por QR Code e aponte o webhook para o n8n
-
-# 5. Painel
-cd web
-cp .env.local.example .env.local   # preencha NEXT_PUBLIC_SUPABASE_URL e ANON_KEY
-npm install
-npm run dev                        # http://localhost:3000
+cp .env.example .env
+docker compose up -d          # postgres, redis, api, web
+docker compose logs -f api web
+# API:  http://localhost:3333
+# Web:  http://localhost:5173
 ```
 
-O passo-a-passo detalhado (com os comandos `curl` do Evolution e o checklist de
-testes) está em **[`docs/SETUP.md`](docs/SETUP.md)**.
+### Local (sem Docker)
 
----
+```bash
+cp .env.example .env
+npm install
+npm run db:generate           # gera o Prisma Client
+# suba postgres+redis (docker compose up -d postgres redis) e rode:
+npm run dev                   # api + web em paralelo
+```
 
-## Endpoints
+## Scripts (raiz)
 
-| Serviço | Endpoint | Uso |
-|---|---|---|
-| Evolution | `POST http://localhost:8080/instance/create` | Cria a instância |
-| Evolution | `GET  http://localhost:8080/instance/connect/{instance}` | QR Code / conectar |
-| Evolution | `POST http://localhost:8080/webhook/set/{instance}` | Aponta o webhook para o n8n |
-| n8n | `POST http://localhost:5678/webhook/whatsapp-inbound` | Recebe o evento do Evolution (produção) |
-| n8n | `POST http://localhost:5678/webhook-test/whatsapp-inbound` | Recebe durante o "Listen for test event" |
-| Supabase | `POST {SUPABASE_URL}/rest/v1/messages` | Insert feito pelo n8n (service_role) |
-| Supabase | `GET  {SUPABASE_URL}/rest/v1/messages` | Leitura feita pelo painel (anon) |
-| Painel | `http://localhost:3000` | Lista as mensagens |
+| Script                | O que faz                    |
+| --------------------- | ---------------------------- |
+| `npm run dev`         | api + web em paralelo        |
+| `npm run build`       | build de todos os workspaces |
+| `npm run typecheck`   | TypeScript em api e web      |
+| `npm run lint`        | ESLint no monorepo           |
+| `npm run format`      | Prettier (escrita)           |
+| `npm run db:generate` | Prisma generate              |
+| `npm run db:migrate`  | Prisma migrate dev           |
 
-> Dentro da rede do Docker, o Evolution alcança o n8n em
-> `http://n8n:5678/webhook/whatsapp-inbound` (nome do serviço, não `localhost`).
+## Health checks
+
+- `GET /health` — liveness básico
+- `GET /health/live` — liveness
+- `GET /health/ready` — readiness (checa PostgreSQL + Redis)
+
+## Produção
+
+```bash
+docker compose -f infra/compose/docker-compose.prod.yml --env-file .env up -d --build
+# Nginx serve o web estático e faz proxy de /api e /socket.io para a API.
+```

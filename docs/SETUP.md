@@ -28,10 +28,10 @@ cp .env.example .env
 
 Preencha no `.env`:
 
-| Variável | Onde obter |
-|---|---|
-| `EVOLUTION_API_KEY` | invente uma (`openssl rand -hex 16`) |
-| `SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
+| Variável                    | Onde obter                                                   |
+| --------------------------- | ------------------------------------------------------------ |
+| `EVOLUTION_API_KEY`         | invente uma (`openssl rand -hex 16`)                         |
+| `SUPABASE_URL`              | Supabase → Project Settings → API → Project URL              |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → `service_role` (secreta) |
 
 ---
@@ -215,10 +215,10 @@ Se **todos** os itens estiverem marcados, a infraestrutura da Sprint 1 está val
 
 ## Troubleshooting rápido
 
-| Sintoma | Provável causa |
-|---|---|
-| Webhook não chega no n8n | Usou `localhost` no lugar de `n8n:5678` no `webhook/set`; ou workflow inativo |
-| n8n recebe mas não grava | `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` ausentes no container (recrie com `docker compose up -d`) |
-| Painel vazio mas Supabase tem dados | `NEXT_PUBLIC_SUPABASE_*` faltando/errado em `web/.env.local` |
-| `relation "messages" does not exist` | A migration do Passo 1 não foi aplicada |
-| Mensagem própria duplicando | Evolution emite `fromMe:true`; o índice único por `wa_message_id` evita duplicatas |
+| Sintoma                              | Provável causa                                                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Webhook não chega no n8n             | Usou `localhost` no lugar de `n8n:5678` no `webhook/set`; ou workflow inativo                        |
+| n8n recebe mas não grava             | `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` ausentes no container (recrie com `docker compose up -d`) |
+| Painel vazio mas Supabase tem dados  | `NEXT_PUBLIC_SUPABASE_*` faltando/errado em `web/.env.local`                                         |
+| `relation "messages" does not exist` | A migration do Passo 1 não foi aplicada                                                              |
+| Mensagem própria duplicando          | Evolution emite `fromMe:true`; o índice único por `wa_message_id` evita duplicatas                   |
