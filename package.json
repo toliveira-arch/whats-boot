@@ -23,7 +23,7 @@
     "db:generate": "npm run generate --workspace @whats-boot/database",
     "db:migrate": "npm run migrate:dev --workspace @whats-boot/database",
     "db:validate": "npm run validate --workspace @whats-boot/database",
-    "prepare": "husky"
+    "prepare": "husky || true; npm run db:generate || true"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",
