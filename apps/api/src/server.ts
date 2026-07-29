@@ -2,12 +2,14 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import { pinoHttp } from 'pino-http';
 import { corsOrigins } from './config/env';
 import { logger } from './lib/logger';
 import { globalRateLimit } from './middlewares/rateLimit';
 import { errorHandler, notFoundHandler } from './middlewares/error';
 import { healthRouter } from './routes/health';
+import { authRouter } from './modules/auth/auth.routes';
 
 /** Monta a aplicação Express (infraestrutura — sem rotas de negócio). */
 export function createApp(): Express {
@@ -25,12 +27,16 @@ export function createApp(): Express {
   app.use(compression());
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
 
   // Rate limit global
   app.use(globalRateLimit);
 
   // Health checks (liveness / readiness)
   app.use(healthRouter);
+
+  // Módulos
+  app.use('/auth', authRouter);
 
   app.get('/', (_req, res) => {
     res.json({ name: 'whats-boot-api', status: 'ok' });
