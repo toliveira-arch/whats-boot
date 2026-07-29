@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
+    "@socket.io/redis-emitter": "^5.1.0",
     "@whats-boot/database": "*",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.34.10",

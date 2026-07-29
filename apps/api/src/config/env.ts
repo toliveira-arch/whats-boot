@@ -13,6 +13,12 @@ const envSchema = z.object({
   API_HOST: z.string().default('0.0.0.0'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
+  // URL pública da API alcançável pela Evolution API (para os webhooks).
+  API_PUBLIC_URL: z.string().url().default('http://localhost:3333'),
+  // Chave de criptografia das apikeys das instâncias (32+ chars). Se ausente,
+  // é derivada do JWT_ACCESS_SECRET.
+  EVOLUTION_ENC_KEY: z.string().optional(),
+
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
