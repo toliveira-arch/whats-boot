@@ -6,6 +6,7 @@ import { createRedisConnection } from '../lib/redis';
 import { corsOrigins } from '../config/env';
 import { logger } from '../lib/logger';
 import { verifyAccessToken, type AuthContext } from '../modules/auth/tokens';
+import { getMetrics } from '../modules/dashboard/dashboard.service';
 
 /** Dados anexados a cada socket autenticado. */
 export interface SocketData {
@@ -77,6 +78,18 @@ export function createSocketServer(httpServer: HttpServer): AppSocketServer {
     logger.debug({ id: socket.id, tenantId, userId }, 'socket conectado');
     socket.emit('server:ready', { tenantId, ts: Date.now() });
 
+    // Dashboard em tempo real: envia as métricas atuais sob demanda.
+    socket.on('dashboard:subscribe', () => {
+      void withSocketTenant(socket, async () => {
+        try {
+          const metrics = await getMetrics();
+          socket.emit('dashboard:metrics', metrics);
+        } catch (err) {
+          logger.error({ err }, 'falha ao computar métricas do dashboard');
+        }
+      });
+    });
+
     socket.on('disconnect', (reason) => {
       logger.debug({ id: socket.id, reason }, 'socket desconectado');
     });
@@ -99,4 +112,10 @@ export function emitToTenant(
 /** Executa um handler de socket dentro do contexto de tenant do socket. */
 export function withSocketTenant<T>(socket: AppSocket, fn: () => T): T {
   return runWithTenant(socket.data.auth.tenantId, fn);
+}
+
+/** Recalcula e emite as métricas do dashboard para todos os sockets do tenant. */
+export async function emitDashboardMetrics(io: AppSocketServer, tenantId: string): Promise<void> {
+  const metrics = await runWithTenant(tenantId, () => getMetrics());
+  io.to(`tenant:${tenantId}`).emit('dashboard:metrics', metrics);
 }

@@ -10,6 +10,7 @@ import { globalRateLimit } from './middlewares/rateLimit';
 import { errorHandler, notFoundHandler } from './middlewares/error';
 import { healthRouter } from './routes/health';
 import { authRouter } from './modules/auth/auth.routes';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 
 /** Monta a aplicação Express (infraestrutura — sem rotas de negócio). */
 export function createApp(): Express {
@@ -37,6 +38,7 @@ export function createApp(): Express {
 
   // Módulos
   app.use('/auth', authRouter);
+  app.use('/dashboard', dashboardRouter);
 
   app.get('/', (_req, res) => {
     res.json({ name: 'whats-boot-api', status: 'ok' });

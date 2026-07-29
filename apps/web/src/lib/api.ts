@@ -1,14 +1,76 @@
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3333';
 
-/** Cliente HTTP mínimo (infraestrutura). A camada de dados real virá depois. */
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-  });
-  if (!res.ok) {
-    throw new Error(`GET ${path} -> ${res.status}`);
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
   }
+}
+
+function rawFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(`${API_URL}${path}`, { credentials: 'include', ...init });
+}
+
+async function messageOf(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { message?: string };
+    return data.message ?? res.statusText;
+  } catch {
+    return res.statusText;
+  }
+}
+
+/** Renova o access token usando o cookie httpOnly de refresh. */
+export async function refreshAccessToken(): Promise<string | null> {
+  const res = await rawFetch('/auth/refresh', { method: 'POST' });
+  if (!res.ok) {
+    accessToken = null;
+    return null;
+  }
+  const data = (await res.json()) as { accessToken: string };
+  accessToken = data.accessToken;
+  return accessToken;
+}
+
+function withHeaders(init: RequestInit, token: string | null): RequestInit {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init.headers as Record<string, string>) ?? {}),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return { ...init, headers };
+}
+
+/** Requisição autenticada; renova o token uma vez em caso de 401. */
+export async function authFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let res = await rawFetch(path, withHeaders(init, accessToken));
+  if (res.status === 401) {
+    const token = await refreshAccessToken();
+    if (token) res = await rawFetch(path, withHeaders(init, token));
+  }
+  if (!res.ok) throw new ApiError(res.status, await messageOf(res));
+  return (await res.json()) as T;
+}
+
+/** POST público (sem token) — usado por login/registro. */
+export async function publicPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await rawFetch(
+    path,
+    withHeaders({ method: 'POST', body: JSON.stringify(body) }, null),
+  );
+  if (!res.ok) throw new ApiError(res.status, await messageOf(res));
   return (await res.json()) as T;
 }
 
