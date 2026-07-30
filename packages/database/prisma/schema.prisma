@@ -753,7 +753,7 @@ model EvolutionInstance {
   tenantId        String
   companyId       String
   name            String
-  instanceName    String                  @unique
+  instanceName    String
   baseUrl         String
   apiKeyEncrypted String
   phoneNumber     String?
@@ -780,6 +780,7 @@ model EvolutionInstance {
   scheduledMessages ScheduledMessage[]
   webhookEvents     WebhookEvent[]
 
+  @@unique([tenantId, instanceName])
   @@index([tenantId])
   @@index([companyId])
   @@index([status])

@@ -74,6 +74,24 @@ export async function createChannel(input: CreateChannelInput) {
     throw new HttpError(404, 'Empresa não encontrada');
   }
 
+  // Nome único por tenant: bloqueia duplicado ativo e libera nome de instância
+  // já excluída (soft delete) para permitir reaproveitar o mesmo instanceName.
+  const clash = await prisma.evolutionInstance.findFirst({
+    where: { instanceName: input.instanceName },
+  });
+  if (clash) {
+    if (!clash.deletedAt) {
+      throw new HttpError(
+        409,
+        'Já existe uma instância com esse nome. Escolha outro nome ou exclua a instância existente.',
+      );
+    }
+    await prisma.evolutionInstance.update({
+      where: { id: clash.id },
+      data: { instanceName: `${clash.instanceName}__del_${Date.now()}` },
+    });
+  }
+
   await testConnection(input.baseUrl, input.apiKey);
 
   const webhookToken = crypto.randomBytes(24).toString('hex');
@@ -215,9 +233,14 @@ export async function deleteChannel(channelId: string) {
   } catch (err) {
     logger.warn({ err, channelId }, 'falha ao remover instância na Evolution (ignorado)');
   }
+  // Libera o instanceName (renomeia) para que o nome possa ser reutilizado.
   await prisma.evolutionInstance.update({
     where: { id: channel.id },
-    data: { deletedAt: new Date(), status: 'DISCONNECTED' },
+    data: {
+      deletedAt: new Date(),
+      status: 'DISCONNECTED',
+      instanceName: `${channel.instanceName}__del_${Date.now()}`,
+    },
   });
   return { ok: true };
 }
