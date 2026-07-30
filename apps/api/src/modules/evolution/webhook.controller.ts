@@ -1,5 +1,6 @@
 import { prisma, runAsSystem, runWithTenant, Prisma } from '@whats-boot/database';
 import { asyncHandler } from '../../lib/http';
+import { logger } from '../../lib/logger';
 import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { processInboundEvent } from './ingest.service';
 import type { EvolutionWebhookPayload } from './evolution.types';
@@ -12,8 +13,15 @@ import type { EvolutionWebhookPayload } from './evolution.types';
 export const evolutionWebhookController = asyncHandler(async (req, res) => {
   const channelId = req.params.channelId!;
   const token =
+    (req.params.token as string | undefined) ??
     (req.query.token as string | undefined) ??
     (req.headers['x-webhook-token'] as string | undefined);
+
+  const payload = (req.body ?? {}) as EvolutionWebhookPayload;
+  const event = typeof payload.event === 'string' ? payload.event : 'unknown';
+
+  // Log de chegada (antes da auth) — facilita diagnosticar o espelhamento.
+  logger.info({ channelId, event, hasToken: Boolean(token) }, 'webhook Evolution recebido');
 
   const channel = await runAsSystem(() =>
     prisma.evolutionInstance.findFirst({
@@ -23,16 +31,15 @@ export const evolutionWebhookController = asyncHandler(async (req, res) => {
   );
 
   if (!channel || channel.deletedAt) {
+    logger.warn({ channelId }, 'webhook: canal não encontrado');
     res.status(404).json({ error: 'not_found' });
     return;
   }
   if (!token || token !== channel.webhookToken) {
+    logger.warn({ channelId, event }, 'webhook: token inválido — verifique a URL do webhook');
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
-
-  const payload = (req.body ?? {}) as EvolutionWebhookPayload;
-  const event = typeof payload.event === 'string' ? payload.event : 'unknown';
   const externalId = payload.data?.key?.id ?? null;
 
   let duplicate = false;
