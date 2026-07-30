@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3333';
+// Em dev: API em localhost:3333 sob /api. Em produção (single-service): defina
+// VITE_API_URL=/api (mesma origem). O sufixo /api casa com o mount do backend.
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3333/api';
 
 let accessToken: string | null = null;
 

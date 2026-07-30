@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -42,20 +44,35 @@ export function createApp(): Express {
   // Health checks (liveness / readiness)
   app.use(healthRouter);
 
-  // Módulos
-  app.use('/auth', authRouter);
-  app.use('/dashboard', dashboardRouter);
-  app.use('/companies', companiesRouter);
-  app.use('/channels', channelsRouter);
-  app.use('/messages', messagesRouter);
-  app.use('/webhooks', webhookRouter);
-  app.use('/conversations', conversationsRouter);
-  app.use('/tags', tagsRouter);
-  app.use('/ai', aiRouter);
+  // Módulos — TODOS sob /api para não colidir com as rotas do site (SPA).
+  app.use('/api/auth', authRouter);
+  app.use('/api/dashboard', dashboardRouter);
+  app.use('/api/companies', companiesRouter);
+  app.use('/api/channels', channelsRouter);
+  app.use('/api/messages', messagesRouter);
+  app.use('/api/webhooks', webhookRouter);
+  app.use('/api/conversations', conversationsRouter);
+  app.use('/api/tags', tagsRouter);
+  app.use('/api/ai', aiRouter);
 
-  app.get('/', (_req, res) => {
-    res.json({ name: 'whats-boot-api', status: 'ok' });
-  });
+  // Servir o site compilado (deploy single-service). Em dev, a pasta não existe
+  // e o Vite serve a web separadamente.
+  const webDist = process.env.WEB_DIST_PATH ?? path.resolve(process.cwd(), 'apps/web/dist');
+  const indexHtml = path.join(webDist, 'index.html');
+
+  if (fs.existsSync(indexHtml)) {
+    app.use(express.static(webDist));
+    // SPA fallback: rotas do navegador → index.html; deixa /api, /socket.io e
+    // /health seguirem para os handlers/404 corretos.
+    app.get('*', (req, res, next) => {
+      if (/^\/(api|socket\.io|health)(\/|$)/.test(req.path)) return next();
+      res.sendFile(indexHtml);
+    });
+  } else {
+    app.get('/', (_req, res) => {
+      res.json({ name: 'whats-boot-api', status: 'ok' });
+    });
+  }
 
   // 404 + tratador de erros (sempre por último)
   app.use(notFoundHandler);

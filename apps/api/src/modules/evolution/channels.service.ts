@@ -40,7 +40,7 @@ function clientFor(channel: { baseUrl: string; apiKeyEncrypted: string }) {
 function webhookUrl(channelId: string, token: string, publicUrl?: string): string {
   // Token no PATH (a Evolution nem sempre preserva query string nos webhooks).
   const base = (publicUrl || env.API_PUBLIC_URL).replace(/\/$/, '');
-  return `${base}/webhooks/evolution/${channelId}/${token}`;
+  return `${base}/api/webhooks/evolution/${channelId}/${token}`;
 }
 
 /**

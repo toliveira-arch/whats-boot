@@ -40,7 +40,12 @@ const envSchema = z.object({
     .default('http://localhost:5173,http://localhost:5174,http://localhost:5175'),
 
   // URL pública da API alcançável pela Evolution API (para os webhooks).
-  API_PUBLIC_URL: z.string().url().default('http://localhost:3333'),
+  // Na nuvem (Render) usa RENDER_EXTERNAL_URL automaticamente; localmente cai
+  // no localhost (ou no túnel, se você definir API_PUBLIC_URL).
+  API_PUBLIC_URL: z
+    .string()
+    .url()
+    .default(process.env.RENDER_EXTERNAL_URL ?? 'http://localhost:3333'),
   // Chave de criptografia das apikeys das instâncias (32+ chars). Se ausente,
   // é derivada do JWT_ACCESS_SECRET.
   EVOLUTION_ENC_KEY: z.string().optional(),

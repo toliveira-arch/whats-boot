@@ -1,0 +1,36 @@
+# Deploy single-service no Render (API + site + webhooks numa URL fixa HTTPS).
+# Como usar: no Render → New → Blueprint → conecte este repositório.
+# Depois defina DATABASE_URL nas variáveis do serviço (a do Neon).
+services:
+  - type: web
+    name: whats-boot
+    runtime: node
+    plan: free
+    region: oregon
+    branch: claude/o-que-temos-conectado-up31yx
+    # Instala, gera o Prisma Client, sincroniza o schema no Neon e compila
+    # (API + site). VITE_API_URL/VITE_SOCKET_URL entram no build da web.
+    # --include=dev garante tsc/vite/prisma mesmo com NODE_ENV=production.
+    buildCommand: npm install --include=dev && npm run db:generate && npm run db:push && npm run build
+    startCommand: node apps/api/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Site na mesma origem: API sob /api e Socket.IO na raiz.
+      - key: VITE_API_URL
+        value: /api
+      - key: VITE_SOCKET_URL
+        value: ''
+      # Banco Neon — defina o valor no painel do Render (não versione a senha).
+      - key: DATABASE_URL
+        sync: false
+      # Segredos gerados automaticamente pelo Render.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: EVOLUTION_ENC_KEY
+        generateValue: true
+      # API_PUBLIC_URL é derivada de RENDER_EXTERNAL_URL automaticamente.
+      # Redis fica DESLIGADO (modo inline) — não defina REDIS_URL/REDIS_ENABLED.
