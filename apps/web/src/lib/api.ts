@@ -62,12 +62,19 @@ function withHeaders(init: RequestInit, token: string | null): RequestInit {
   return { ...init, headers };
 }
 
+const NETWORK_MESSAGE = `Não foi possível conectar à API (${API_URL}). Verifique se ela está no ar.`;
+
 /** Requisição autenticada; renova o token uma vez em caso de 401. */
 export async function authFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let res = await rawFetch(path, withHeaders(init, accessToken));
-  if (res.status === 401) {
-    const token = await refreshAccessToken();
-    if (token) res = await rawFetch(path, withHeaders(init, token));
+  let res: Response;
+  try {
+    res = await rawFetch(path, withHeaders(init, accessToken));
+    if (res.status === 401) {
+      const token = await refreshAccessToken();
+      if (token) res = await rawFetch(path, withHeaders(init, token));
+    }
+  } catch {
+    throw new ApiError(0, NETWORK_MESSAGE);
   }
   if (!res.ok) throw new ApiError(res.status, await messageOf(res));
   return (await res.json()) as T;
@@ -75,10 +82,12 @@ export async function authFetch<T>(path: string, init: RequestInit = {}): Promis
 
 /** POST público (sem token) — usado por login/registro. */
 export async function publicPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await rawFetch(
-    path,
-    withHeaders({ method: 'POST', body: JSON.stringify(body) }, null),
-  );
+  let res: Response;
+  try {
+    res = await rawFetch(path, withHeaders({ method: 'POST', body: JSON.stringify(body) }, null));
+  } catch {
+    throw new ApiError(0, NETWORK_MESSAGE);
+  }
   if (!res.ok) throw new ApiError(res.status, await messageOf(res));
   return (await res.json()) as T;
 }

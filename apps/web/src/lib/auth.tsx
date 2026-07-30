@@ -5,10 +5,18 @@ import type { Profile } from './types';
 
 type Status = 'loading' | 'authenticated' | 'unauthenticated';
 
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+  companyName?: string;
+}
+
 interface AuthValue {
   status: Status;
   profile: Profile | null;
   login: (email: string, password: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -53,6 +61,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           password,
         });
+        setAccessToken(accessToken);
+        connectSocket(accessToken);
+        const me = await authFetch<Profile>('/auth/me');
+        setProfile(me);
+        setStatus('authenticated');
+      },
+      async register(input) {
+        const { accessToken } = await publicPost<{ accessToken: string }>('/auth/register', input);
         setAccessToken(accessToken);
         connectSocket(accessToken);
         const me = await authFetch<Profile>('/auth/me');
