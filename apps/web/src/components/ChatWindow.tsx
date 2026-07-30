@@ -58,6 +58,8 @@ interface Props {
   onTogglePin: () => void;
   onToggleArchive: () => void;
   onResolve: () => void;
+  suggestion: string | null;
+  onDismissSuggestion: () => void;
 }
 
 export function ChatWindow({
@@ -70,6 +72,8 @@ export function ChatWindow({
   onTogglePin,
   onToggleArchive,
   onResolve,
+  suggestion,
+  onDismissSuggestion,
 }: Props) {
   const [text, setText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
@@ -160,6 +164,25 @@ export function ChatWindow({
           <MessageBubble key={m.id} m={m} />
         ))}
       </div>
+
+      {suggestion && (
+        <div className="ai-suggestion">
+          <span className="ai-badge">IA</span>
+          <span className="ai-text">{suggestion}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setText(suggestion);
+              onDismissSuggestion();
+            }}
+          >
+            Usar
+          </button>
+          <button type="button" onClick={onDismissSuggestion}>
+            Descartar
+          </button>
+        </div>
+      )}
 
       <form className="composer" onSubmit={submit}>
         <button type="button" className="emoji-toggle" onClick={() => setShowEmoji((v) => !v)}>

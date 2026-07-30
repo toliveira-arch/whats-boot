@@ -1167,11 +1167,20 @@ model AiAgent {
   temperature           Float      @default(0.7)
   maxTokens             Int        @default(1024)
   mode                  AiMode     @default(COPILOT)
+  systemPrompt          String? // prompt inline (versionamento completo na ETAPA 10)
   systemPromptVersionId String?
   knowledgeBaseId       String?
   tools                 Json?
   handoffRules          Json?
-  isActive              Boolean    @default(true)
+  // Guardrails / config de operação (ETAPA 9)
+  forbiddenWords             String[] @default([])
+  requiredWords              String[] @default([])
+  activeFrom                 String? // horário "08:00" (fuso do tenant)
+  activeTo                   String? // horário "18:00"
+  maxMessagesPerConversation Int? // limite de respostas automáticas por conversa
+  minResponseSeconds         Int      @default(0) // atraso mínimo antes de responder
+  maxResponseSeconds         Int      @default(0) // atraso máximo (0 = sem atraso)
+  isActive                   Boolean  @default(true)
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
   deletedAt             DateTime?

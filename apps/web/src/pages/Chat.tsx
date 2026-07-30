@@ -26,6 +26,7 @@ export function Chat() {
 
   const [allTags, setAllTags] = useState<ChatTag[]>([]);
   const [notes, setNotes] = useState<ChatNote[]>([]);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
 
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedId;
@@ -70,6 +71,7 @@ export function Chat() {
 
   // Ao selecionar uma conversa
   useEffect(() => {
+    setSuggestion(null);
     if (!selectedId) {
       setConversation(null);
       setMessages([]);
@@ -111,13 +113,18 @@ export function Chat() {
       }
     };
     const onUpdated = () => void loadList();
+    const onSuggestion = (payload: { conversationId?: string; content?: string }) => {
+      if (payload.conversationId === selectedRef.current) setSuggestion(payload.content ?? null);
+    };
     socket.on('message.created', onCreated);
     socket.on('message.status', onStatus);
     socket.on('conversation.updated', onUpdated);
+    socket.on('ai.suggestion', onSuggestion);
     return () => {
       socket.off('message.created', onCreated);
       socket.off('message.status', onStatus);
       socket.off('conversation.updated', onUpdated);
+      socket.off('ai.suggestion', onSuggestion);
     };
   }, [loadMessages, loadList]);
 
@@ -176,6 +183,8 @@ export function Chat() {
         onTogglePin={() => patch({ isPinned: !conversation?.isPinned })}
         onToggleArchive={() => patch({ isArchived: !conversation?.isArchived })}
         onResolve={() => patch({ status: 'RESOLVED' })}
+        suggestion={suggestion}
+        onDismissSuggestion={() => setSuggestion(null)}
       />
 
       {conversation && (

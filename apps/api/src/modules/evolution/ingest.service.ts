@@ -1,6 +1,7 @@
 import { prisma, runWithTenant, Prisma } from '@whats-boot/database';
 import { logger } from '../../lib/logger';
 import { broadcastToTenant } from '../../realtime/emitter';
+import { queues, QUEUE_NAMES } from '../../queues';
 import {
   extractText,
   mapAckStatus,
@@ -125,6 +126,15 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
     waMessageId,
   });
   broadcastToTenant(channel.tenantId, 'conversation.updated', { conversationId: conversation.id });
+
+  // Dispara a IA para mensagens recebidas (o agente decide se/como responde).
+  if (!fromMe) {
+    await queues[QUEUE_NAMES.aiProcess].add(
+      'reply',
+      { conversationId: conversation.id, tenantId: channel.tenantId },
+      { jobId: `ai:${waMessageId}` },
+    );
+  }
 }
 
 async function handleMessagesUpdate(channel: Channel, payload: EvolutionWebhookPayload) {

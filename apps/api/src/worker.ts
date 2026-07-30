@@ -4,6 +4,7 @@ import { logger } from './lib/logger';
 import { QUEUE_NAMES, type QueueName } from './queues';
 import { processInboundEvent, type InboundJob } from './modules/evolution/ingest.service';
 import { processOutbound, type OutboundJob } from './modules/evolution/messaging.service';
+import { generateReplyJob } from './modules/ai/ai.service';
 
 /**
  * Processo de WORKER (deploy separado da API). Processa as filas BullMQ:
@@ -19,6 +20,9 @@ const processors: Partial<Record<QueueName, Processor>> = {
   },
   [QUEUE_NAMES.outboundMessages]: async (job) => {
     await processOutbound(job.data as OutboundJob);
+  },
+  [QUEUE_NAMES.aiProcess]: async (job) => {
+    await generateReplyJob(job.data as { conversationId: string; tenantId: string });
   },
 };
 

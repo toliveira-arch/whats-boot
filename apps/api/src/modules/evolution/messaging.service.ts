@@ -94,10 +94,11 @@ async function resolveContactAndConversation(
 
 export interface SendTextInput {
   tenantId: string;
-  membershipId: string;
+  membershipId?: string;
   channelId: string;
   number: string;
   text: string;
+  authorType?: 'AGENT' | 'AI';
 }
 
 export async function sendText(input: SendTextInput) {
@@ -113,8 +114,8 @@ export async function sendText(input: SendTextInput) {
       contactId: contact.id,
       evolutionInstanceId: channel.id,
       direction: 'OUTBOUND',
-      authorType: 'AGENT',
-      authorMembershipId: input.membershipId,
+      authorType: input.authorType ?? 'AGENT',
+      authorMembershipId: input.membershipId ?? null,
       type: 'TEXT',
       content: input.text,
       status: 'QUEUED',

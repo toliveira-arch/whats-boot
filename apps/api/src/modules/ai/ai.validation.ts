@@ -1,0 +1,35 @@
+import { z } from 'zod';
+
+const time = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm')
+  .nullable()
+  .optional();
+
+export const agentSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  provider: z.enum(['OPENAI', 'GOOGLE']).optional(),
+  model: z.string().min(1).max(80).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().min(1).max(32000).optional(),
+  mode: z.enum(['OFF', 'COPILOT', 'AUTOPILOT']).optional(),
+  systemPrompt: z.string().max(8000).optional(),
+  forbiddenWords: z.array(z.string()).optional(),
+  requiredWords: z.array(z.string()).optional(),
+  activeFrom: time,
+  activeTo: time,
+  maxMessagesPerConversation: z.number().int().min(1).max(1000).nullable().optional(),
+  minResponseSeconds: z.number().int().min(0).max(600).optional(),
+  maxResponseSeconds: z.number().int().min(0).max(600).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const credentialSchema = z.object({
+  provider: z.enum(['OPENAI', 'GOOGLE']),
+  apiKey: z.string().min(1),
+  baseUrl: z.string().url().optional(),
+});
+
+export const testSchema = z.object({
+  userMessage: z.string().min(1).max(2000),
+});

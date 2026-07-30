@@ -15,6 +15,7 @@ import { channelsRouter } from './modules/evolution/channels.routes';
 import { messagesRouter } from './modules/evolution/messages.routes';
 import { webhookRouter } from './modules/evolution/webhook.routes';
 import { conversationsRouter, tagsRouter } from './modules/conversations/conversations.routes';
+import { aiRouter } from './modules/ai/ai.routes';
 
 /** Monta a aplicação Express (infraestrutura — sem rotas de negócio). */
 export function createApp(): Express {
@@ -48,6 +49,7 @@ export function createApp(): Express {
   app.use('/webhooks', webhookRouter);
   app.use('/conversations', conversationsRouter);
   app.use('/tags', tagsRouter);
+  app.use('/ai', aiRouter);
 
   app.get('/', (_req, res) => {
     res.json({ name: 'whats-boot-api', status: 'ok' });
