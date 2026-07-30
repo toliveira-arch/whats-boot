@@ -18,5 +18,10 @@ redis.on('error', (err) => logger.error({ err }, 'erro no redis'));
 
 /** Cria uma nova conexão Redis (para BullMQ / pub-sub do Socket.IO). */
 export function createRedisConnection(): Redis {
-  return new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+  const connection = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+  // Sempre registrar um handler de 'error' — sem isso, um Redis indisponível
+  // dispara "Unhandled error event" e derruba o processo. Assim a API continua
+  // de pé (login/dashboard funcionam só com o Postgres) mesmo sem Redis.
+  connection.on('error', (err) => logger.error({ err }, 'erro na conexão redis'));
+  return connection;
 }
