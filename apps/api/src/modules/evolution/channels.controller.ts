@@ -42,3 +42,7 @@ export const setChannelAiController = asyncHandler(async (req, res) => {
 export const diagnosticsController = asyncHandler(async (req, res) => {
   res.json(await channels.diagnostics(req.params.channelId!));
 });
+
+export const setWebhookUrlController = asyncHandler(async (req, res) => {
+  res.json(await channels.setWebhookPublicUrl(req.params.channelId!, req.body.publicUrl));
+});

@@ -22,4 +22,8 @@ export const setChannelAiSchema = z.object({
   enabled: z.boolean(),
 });
 
+export const setWebhookUrlSchema = z.object({
+  publicUrl: z.string().url(),
+});
+
 export type CreateChannelInput = z.infer<typeof createChannelSchema>;

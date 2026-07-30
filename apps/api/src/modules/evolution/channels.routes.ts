@@ -6,6 +6,7 @@ import { validateBody } from '../../middlewares/validate';
 import {
   createChannelSchema,
   setChannelAiSchema,
+  setWebhookUrlSchema,
   testConnectionSchema,
 } from './channels.validation';
 import {
@@ -17,6 +18,7 @@ import {
   qrCodeController,
   reconnectController,
   setChannelAiController,
+  setWebhookUrlController,
   stateController,
   testConnectionController,
 } from './channels.controller';
@@ -64,6 +66,12 @@ channelsRouter.patch(
   requirePermissions('channels.manage'),
   validateBody(setChannelAiSchema),
   setChannelAiController,
+);
+channelsRouter.post(
+  '/:channelId/webhook',
+  requirePermissions('channels.manage'),
+  validateBody(setWebhookUrlSchema),
+  setWebhookUrlController,
 );
 channelsRouter.delete(
   '/:channelId',

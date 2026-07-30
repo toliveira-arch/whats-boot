@@ -35,6 +35,9 @@ export function Channels() {
   } | null>(null);
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
+  const [diagChannelId, setDiagChannelId] = useState<string | null>(null);
+  const [tunnelUrl, setTunnelUrl] = useState('');
+  const [applying, setApplying] = useState(false);
 
   const loadChannels = useCallback(async () => {
     try {
@@ -183,13 +186,32 @@ export function Channels() {
 
   async function openDiag(channelId: string) {
     setDiag(null);
+    setDiagChannelId(channelId);
     setDiagLoading(true);
     try {
-      setDiag(await ch.getDiagnostics(channelId));
+      const d = await ch.getDiagnostics(channelId);
+      setDiag(d);
+      // Pré-preenche com a base atual (ex.: túnel) para facilitar corrigir.
+      const base = d.expectedWebhookUrl.split('/webhooks/evolution/')[0] ?? '';
+      setTunnelUrl(base);
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Falha ao carregar diagnóstico');
     } finally {
       setDiagLoading(false);
+    }
+  }
+
+  async function applyTunnelUrl() {
+    if (!diagChannelId || !tunnelUrl.trim()) return;
+    setApplying(true);
+    try {
+      await ch.setWebhookUrl(diagChannelId, tunnelUrl.trim());
+      setDiag(await ch.getDiagnostics(diagChannelId));
+      setMsg('Webhook atualizado ✅ Mande uma mensagem no WhatsApp para testar.');
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Falha ao aplicar a URL do webhook');
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -400,10 +422,32 @@ export function Channels() {
                 {diag.webhookEventsReceived === 0 && (
                   <p className="sub">
                     Sem eventos: a Evolution não está alcançando sua API. Confira o túnel
-                    (cloudflared aberto), a <code>API_PUBLIC_URL</code> e se a URL acima aponta para
-                    o túnel.
+                    (cloudflared/ngrok aberto) e cole a URL pública atual abaixo para corrigir o
+                    webhook na hora.
                   </p>
                 )}
+
+                <div className="diag-fix">
+                  <label className="field">
+                    <span>URL pública atual (túnel) — sem barra no final</span>
+                    <input
+                      value={tunnelUrl}
+                      onChange={(e) => setTunnelUrl(e.target.value)}
+                      placeholder="https://algo.trycloudflare.com"
+                    />
+                  </label>
+                  <button
+                    className="btn"
+                    disabled={applying || !tunnelUrl.trim()}
+                    onClick={() => void applyTunnelUrl()}
+                  >
+                    {applying ? 'Aplicando…' : 'Aplicar webhook agora'}
+                  </button>
+                  <p className="sub small">
+                    Isso reconfigura o webhook na Evolution imediatamente — sem editar .env nem
+                    reiniciar. Use quando a URL do túnel mudar.
+                  </p>
+                </div>
                 {diag.recentEvents.length > 0 && (
                   <ul className="diag-events">
                     {diag.recentEvents.map((e, i) => (

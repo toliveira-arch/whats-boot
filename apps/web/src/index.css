@@ -1042,3 +1042,12 @@ h2 {
   align-items: center;
   font-size: 12px;
 }
+
+.diag-fix {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

@@ -37,9 +37,32 @@ function clientFor(channel: { baseUrl: string; apiKeyEncrypted: string }) {
   return createEvolutionClient(channel.baseUrl, decryptSecret(channel.apiKeyEncrypted));
 }
 
-function webhookUrl(channelId: string, token: string): string {
+function webhookUrl(channelId: string, token: string, publicUrl?: string): string {
   // Token no PATH (a Evolution nem sempre preserva query string nos webhooks).
-  return `${env.API_PUBLIC_URL.replace(/\/$/, '')}/webhooks/evolution/${channelId}/${token}`;
+  const base = (publicUrl || env.API_PUBLIC_URL).replace(/\/$/, '');
+  return `${base}/webhooks/evolution/${channelId}/${token}`;
+}
+
+/**
+ * Aplica uma URL pública (ex.: túnel atual) ao webhook da instância, na hora,
+ * sem precisar editar o .env nem reiniciar. Resolve o caso do túnel que muda de
+ * URL: o usuário cola a URL atual no painel e clica em aplicar.
+ */
+export async function setWebhookPublicUrl(channelId: string, publicUrl: string) {
+  const channel = await loadChannel(channelId);
+  const url = webhookUrl(channel.id, channel.webhookToken, publicUrl);
+  await clientFor(channel).setWebhook(channel.instanceName, {
+    enabled: true,
+    url,
+    webhookByEvents: false,
+    webhookBase64: true,
+    events: WEBHOOK_EVENTS,
+  });
+  await prisma.evolutionInstance.update({
+    where: { id: channel.id },
+    data: { webhookUrl: url },
+  });
+  return { webhookUrl: url };
 }
 
 /**

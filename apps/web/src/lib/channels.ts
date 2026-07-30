@@ -111,6 +111,16 @@ export function getDiagnostics(channelId: string): Promise<Diagnostics> {
   return authFetch(`/channels/${channelId}/diagnostics`);
 }
 
+export function setWebhookUrl(
+  channelId: string,
+  publicUrl: string,
+): Promise<{ webhookUrl: string }> {
+  return authFetch(`/channels/${channelId}/webhook`, {
+    method: 'POST',
+    body: JSON.stringify({ publicUrl }),
+  });
+}
+
 export const STATUS_LABEL: Record<ChannelStatus, string> = {
   CREATED: 'Criada',
   QRCODE: 'Aguardando QR',
