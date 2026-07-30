@@ -15,7 +15,7 @@ healthRouter.get('/health/live', (_req, res) => {
 
 /** Readiness — as dependências (Postgres e Redis) estão prontas? */
 healthRouter.get('/health/ready', async (_req, res) => {
-  const checks: Record<string, 'ok' | 'error'> = {};
+  const checks: Record<string, 'ok' | 'error' | 'disabled'> = {};
 
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -24,13 +24,17 @@ healthRouter.get('/health/ready', async (_req, res) => {
     checks.database = 'error';
   }
 
-  try {
-    const pong = await redis.ping();
-    checks.redis = pong === 'PONG' ? 'ok' : 'error';
-  } catch {
-    checks.redis = 'error';
+  if (!redis) {
+    checks.redis = 'disabled'; // modo inline (sem Redis) — não afeta readiness
+  } else {
+    try {
+      const pong = await redis.ping();
+      checks.redis = pong === 'PONG' ? 'ok' : 'error';
+    } catch {
+      checks.redis = 'error';
+    }
   }
 
-  const ready = Object.values(checks).every((v) => v === 'ok');
+  const ready = Object.values(checks).every((v) => v === 'ok' || v === 'disabled');
   res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', checks });
 });

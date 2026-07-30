@@ -2,7 +2,8 @@ import type { Server as HttpServer } from 'node:http';
 import { Server as SocketServer, type DefaultEventsMap, type Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { runWithTenant } from '@whats-boot/database';
-import { createRedisConnection } from '../lib/redis';
+import { createRedisConnection, redisEnabled } from '../lib/redis';
+import { setLocalIo } from './emitter';
 import { corsOrigins } from '../config/env';
 import { logger } from '../lib/logger';
 import { verifyAccessToken, type AuthContext } from '../modules/auth/tokens';
@@ -42,9 +43,15 @@ export function createSocketServer(httpServer: HttpServer): AppSocketServer {
     path: '/socket.io',
   });
 
-  const pubClient = createRedisConnection();
-  const subClient = pubClient.duplicate();
-  io.adapter(createAdapter(pubClient, subClient));
+  if (redisEnabled) {
+    // Escala horizontal: eventos trafegam entre processos via Redis.
+    const pubClient = createRedisConnection();
+    const subClient = pubClient.duplicate();
+    io.adapter(createAdapter(pubClient, subClient));
+  } else {
+    // Modo inline: emite direto por esta instância (processamento no mesmo processo).
+    setLocalIo(io);
+  }
 
   // Autenticação obrigatória no handshake.
   io.use((socket, next) => {
@@ -95,7 +102,10 @@ export function createSocketServer(httpServer: HttpServer): AppSocketServer {
     });
   });
 
-  logger.info('socket.io inicializado (auth + isolamento por tenant + adapter redis)');
+  logger.info(
+    { adapter: redisEnabled ? 'redis' : 'local' },
+    'socket.io inicializado (auth + isolamento por tenant)',
+  );
   return io;
 }
 

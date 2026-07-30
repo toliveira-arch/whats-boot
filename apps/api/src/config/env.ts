@@ -43,7 +43,10 @@ const envSchema = z.object({
   EVOLUTION_ENC_KEY: z.string().optional(),
 
   DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  // Redis é OPCIONAL. Sem REDIS_URL, o sistema roda tudo em processo (filas
+  // inline + Socket.IO local) — ideal para desenvolvimento e single-node.
+  // Defina REDIS_URL (Redis >= 5) para escalar com worker separado.
+  REDIS_URL: z.string().url().optional(),
 
   JWT_ACCESS_SECRET: z.string().min(1).default('dev-access-secret'),
   JWT_REFRESH_SECRET: z.string().min(1).default('dev-refresh-secret'),

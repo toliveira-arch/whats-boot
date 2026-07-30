@@ -1,5 +1,5 @@
 import { Queue, type JobsOptions } from 'bullmq';
-import { createRedisConnection, redis } from '../lib/redis';
+import { createRedisConnection, redisEnabled } from '../lib/redis';
 import { logger } from '../lib/logger';
 
 /**
@@ -19,7 +19,7 @@ export const QUEUE_NAMES = {
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
-const connection = createRedisConnection();
+const connection = redisEnabled ? createRedisConnection() : null;
 
 const defaultJobOptions = {
   attempts: 3,
@@ -28,20 +28,25 @@ const defaultJobOptions = {
   removeOnFail: { count: 5000 },
 };
 
-/** Registro de todas as filas, criadas uma única vez. */
-export const queues: Record<QueueName, Queue> = Object.values(QUEUE_NAMES).reduce(
-  (acc, name) => {
-    acc[name] = new Queue(name, { connection, defaultJobOptions });
-    return acc;
-  },
-  {} as Record<QueueName, Queue>,
-);
+/** Registro das filas (vazio quando Redis está desabilitado — modo inline). */
+export const queues: Partial<Record<QueueName, Queue>> =
+  connection === null
+    ? {}
+    : Object.values(QUEUE_NAMES).reduce(
+        (acc, name) => {
+          acc[name] = new Queue(name, { connection, defaultJobOptions });
+          return acc;
+        },
+        {} as Record<QueueName, Queue>,
+      );
 
-logger.info({ queues: Object.keys(queues) }, 'filas BullMQ registradas');
+if (redisEnabled) {
+  logger.info({ queues: Object.keys(queues) }, 'filas BullMQ registradas');
+}
 
 export async function closeQueues(): Promise<void> {
-  await Promise.all(Object.values(queues).map((q) => q.close()));
-  await connection.quit();
+  await Promise.all(Object.values(queues).map((q) => q?.close()));
+  await connection?.quit();
 }
 
 /**
@@ -55,17 +60,16 @@ export async function enqueueOrRun<T>(
   opts: JobsOptions,
   inlineRunner: (job: T) => Promise<void>,
 ): Promise<void> {
-  if (redis.status === 'ready') {
+  const queue = queues[name];
+  if (redisEnabled && queue) {
     try {
-      await queues[name].add('job', job as never, opts);
+      await queue.add('job', job as never, opts);
       return;
     } catch (err) {
       logger.warn({ err, name }, 'falha ao enfileirar; processando inline');
     }
-  } else {
-    logger.warn({ name, status: redis.status }, 'Redis indisponível; processando inline');
   }
-  // Destacado: não bloqueia a resposta HTTP nem o processamento do webhook.
+  // Modo inline (sem Redis): processa destacado, sem bloquear a resposta HTTP.
   void Promise.resolve()
     .then(() => inlineRunner(job))
     .catch((err) => logger.error({ err, name }, 'falha no processamento inline'));

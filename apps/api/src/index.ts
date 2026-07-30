@@ -24,7 +24,7 @@ async function bootstrap(): Promise<void> {
     io.close();
     httpServer.close();
     await closeQueues().catch(() => undefined);
-    await redis.quit().catch(() => undefined);
+    await redis?.quit().catch(() => undefined);
     await prisma.$disconnect().catch(() => undefined);
     process.exit(0);
   };
