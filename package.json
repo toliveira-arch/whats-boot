@@ -24,6 +24,7 @@
     "db:generate": "prisma generate --schema=packages/database/prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=packages/database/prisma/schema.prisma",
     "db:push": "prisma db push --schema=packages/database/prisma/schema.prisma",
+    "db:push:ci": "prisma db push --schema=packages/database/prisma/schema.prisma --accept-data-loss --skip-generate",
     "db:deploy": "prisma migrate deploy --schema=packages/database/prisma/schema.prisma",
     "db:validate": "prisma validate --schema=packages/database/prisma/schema.prisma",
     "db:studio": "prisma studio --schema=packages/database/prisma/schema.prisma",
