@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { prisma } from '../../lib/prisma';
+import { prisma, runAsSystem, runWithTenant } from '@whats-boot/database';
 import { env } from '../../config/env';
 import { HttpError } from '../../middlewares/error';
 import { logger } from '../../lib/logger';
@@ -311,4 +311,30 @@ export async function deleteChannel(channelId: string) {
     },
   });
   return { ok: true };
+}
+
+/**
+ * Re-sincroniza o webhook de TODAS as instâncias ativas com a API_PUBLIC_URL
+ * atual. Roda na inicialização da API: assim, ao trocar a URL pública (novo
+ * túnel), o webhook é reconfigurado sozinho — sem precisar clicar "Reconectar".
+ */
+export async function resyncAllWebhooks(): Promise<void> {
+  const instances = await runAsSystem(() =>
+    prisma.evolutionInstance.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        tenantId: true,
+        instanceName: true,
+        baseUrl: true,
+        apiKeyEncrypted: true,
+        webhookToken: true,
+      },
+    }),
+  );
+  if (instances.length === 0) return;
+  logger.info({ count: instances.length }, 're-sincronizando webhooks com API_PUBLIC_URL atual');
+  for (const inst of instances) {
+    await runWithTenant(inst.tenantId, () => syncWebhook(inst));
+  }
 }

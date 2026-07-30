@@ -6,6 +6,7 @@ import { createSocketServer } from './realtime/socket';
 import { redis } from './lib/redis';
 import { prisma } from './lib/prisma';
 import { closeQueues } from './queues';
+import { resyncAllWebhooks } from './modules/evolution/channels.service';
 
 async function bootstrap(): Promise<void> {
   const app = createApp();
@@ -23,6 +24,11 @@ async function bootstrap(): Promise<void> {
         'API_PUBLIC_URL está em localhost — a Evolution (remota) NÃO alcançará os webhooks. Aponte para o túnel e reinicie.',
       );
     }
+    // Re-sincroniza os webhooks das instâncias com a API_PUBLIC_URL atual —
+    // assim trocar de túnel passa a valer sozinho, sem clicar "Reconectar".
+    void resyncAllWebhooks().catch((err) =>
+      logger.warn({ err }, 'falha ao re-sincronizar webhooks no boot'),
+    );
   });
 
   // Encerramento gracioso
