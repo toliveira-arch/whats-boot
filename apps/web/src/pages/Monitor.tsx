@@ -7,6 +7,7 @@ interface FeedItem {
   id: string;
   kind: 'message' | 'status';
   text: string;
+  channelName?: string;
   direction?: string;
   at: number;
 }
@@ -17,6 +18,10 @@ export function Monitor() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const seqRef = useRef(0);
+  const channelsRef = useRef<Channel[]>([]);
+  channelsRef.current = channels;
+
+  const nameFor = (channelId?: string) => channelsRef.current.find((c) => c.id === channelId)?.name;
 
   const load = useCallback(async () => {
     try {
@@ -42,10 +47,11 @@ export function Monitor() {
       setFeed((prev) => [{ ...item, id: `f${feedSeq}`, at: seqRef.current }, ...prev.slice(0, 49)]);
     };
 
-    const onMessage = (p: { direction?: string; content?: string | null }) => {
+    const onMessage = (p: { direction?: string; content?: string | null; channelId?: string }) => {
       push({
         kind: 'message',
         direction: p.direction,
+        channelName: nameFor(p.channelId),
         text: p.content?.slice(0, 120) || '(mídia/sem texto)',
       });
     };
@@ -136,6 +142,7 @@ export function Monitor() {
                       <span className={`dir ${f.direction === 'INBOUND' ? 'in' : 'out'}`}>
                         {f.direction === 'INBOUND' ? '← recebida' : '→ enviada'}
                       </span>
+                      {f.channelName && <span className="feed-channel">{f.channelName}</span>}
                       <span className="feed-text">{f.text}</span>
                     </>
                   ) : (

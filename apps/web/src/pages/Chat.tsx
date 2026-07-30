@@ -8,6 +8,7 @@ import type {
   ConversationDetail,
   ConversationListItem,
 } from '../lib/chat';
+import { listChannels, type Channel } from '../lib/channels';
 import { ConversationList } from '../components/ConversationList';
 import { ChatWindow } from '../components/ChatWindow';
 import { ContactPanel } from '../components/ContactPanel';
@@ -17,6 +18,8 @@ export function Chat() {
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState('');
   const [archived, setArchived] = useState(false);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [channelId, setChannelId] = useState('');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
@@ -34,13 +37,19 @@ export function Chat() {
   const loadList = useCallback(async () => {
     setLoadingList(true);
     try {
-      setConversations(await chat.listConversations({ q: search || undefined, archived }));
+      setConversations(
+        await chat.listConversations({
+          q: search || undefined,
+          archived,
+          channelId: channelId || undefined,
+        }),
+      );
     } catch {
       /* ignora */
     } finally {
       setLoadingList(false);
     }
-  }, [search, archived]);
+  }, [search, archived, channelId]);
 
   // Lista + busca (com debounce)
   useEffect(() => {
@@ -48,11 +57,14 @@ export function Chat() {
     return () => clearTimeout(t);
   }, [loadList]);
 
-  // Etiquetas disponíveis
+  // Etiquetas e canais disponíveis
   useEffect(() => {
     chat
       .listTags()
       .then(setAllTags)
+      .catch(() => undefined);
+    listChannels()
+      .then(setChannels)
       .catch(() => undefined);
   }, []);
 
@@ -171,6 +183,9 @@ export function Chat() {
         archived={archived}
         onArchivedChange={setArchived}
         loading={loadingList}
+        channels={channels}
+        channelId={channelId}
+        onChannelChange={setChannelId}
       />
 
       <ChatWindow

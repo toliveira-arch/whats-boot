@@ -28,6 +28,7 @@ export interface ListConversationsParams {
   archived?: boolean;
   pinned?: boolean;
   tagId?: string;
+  channelId?: string;
   limit?: number;
 }
 
@@ -41,6 +42,7 @@ export async function listConversations(params: ListConversationsParams) {
       ...(params.status ? { status: params.status as never } : {}),
       ...(params.pinned !== undefined ? { isPinned: params.pinned } : {}),
       ...(params.tagId ? { tags: { some: { tagId: params.tagId } } } : {}),
+      ...(params.channelId ? { evolutionInstanceId: params.channelId } : {}),
       ...(params.q
         ? {
             contact: {
@@ -55,6 +57,7 @@ export async function listConversations(params: ListConversationsParams) {
     },
     include: {
       contact: { select: contactSelect },
+      evolutionInstance: { select: { id: true, name: true } },
       tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
       messages: {
         orderBy: { createdAt: 'desc' },
@@ -78,6 +81,7 @@ export async function listConversations(params: ListConversationsParams) {
     assignedToId: c.assignedToId,
     lastMessageAt: c.lastMessageAt,
     contact: c.contact,
+    channel: c.evolutionInstance,
     tags: c.tags.map((t) => t.tag),
     lastMessage: c.messages[0] ?? null,
   }));
@@ -88,6 +92,7 @@ async function requireConversation(conversationId: string) {
     where: { id: conversationId, deletedAt: null },
     include: {
       contact: { select: contactSelect },
+      evolutionInstance: { select: { id: true, name: true } },
       tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
     },
   });
@@ -108,6 +113,7 @@ export async function getConversation(conversationId: string) {
     aiEnabled: c.aiEnabled,
     assignedToId: c.assignedToId,
     evolutionInstanceId: c.evolutionInstanceId,
+    channel: c.evolutionInstance,
     lastMessageAt: c.lastMessageAt,
     contact: c.contact,
     tags: c.tags.map((t) => t.tag),

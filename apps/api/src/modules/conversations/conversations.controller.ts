@@ -2,7 +2,7 @@ import { asyncHandler } from '../../lib/http';
 import * as svc from './conversations.service';
 
 export const listConversationsController = asyncHandler(async (req, res) => {
-  const { q, status, archived, pinned, tagId, limit } = req.query;
+  const { q, status, archived, pinned, tagId, channelId, limit } = req.query;
   res.json(
     await svc.listConversations({
       q: typeof q === 'string' ? q : undefined,
@@ -10,6 +10,7 @@ export const listConversationsController = asyncHandler(async (req, res) => {
       archived: archived === 'true' ? true : archived === 'false' ? false : undefined,
       pinned: pinned === 'true' ? true : pinned === 'false' ? false : undefined,
       tagId: typeof tagId === 'string' ? tagId : undefined,
+      channelId: typeof channelId === 'string' ? channelId : undefined,
       limit: typeof limit === 'string' ? Number(limit) : undefined,
     }),
   );

@@ -1,6 +1,7 @@
 import { prisma, runAsSystem, runWithTenant, Prisma } from '@whats-boot/database';
 import { asyncHandler } from '../../lib/http';
-import { queues, QUEUE_NAMES } from '../../queues';
+import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
+import { processInboundEvent } from './ingest.service';
 import type { EvolutionWebhookPayload } from './evolution.types';
 
 /**
@@ -56,10 +57,11 @@ export const evolutionWebhookController = asyncHandler(async (req, res) => {
   });
 
   if (!duplicate) {
-    await queues[QUEUE_NAMES.inboundMessages].add(
-      'event',
+    await enqueueOrRun(
+      QUEUE_NAMES.inboundMessages,
       { channelId: channel.id, tenantId: channel.tenantId, payload },
       { jobId: externalId ? `${channel.id}:${externalId}` : undefined },
+      processInboundEvent,
     );
   }
 

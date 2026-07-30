@@ -18,6 +18,11 @@ function time(iso: string | null): string {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+interface ChannelOption {
+  id: string;
+  name: string;
+}
+
 interface Props {
   items: ConversationListItem[];
   selectedId: string | null;
@@ -27,6 +32,9 @@ interface Props {
   archived: boolean;
   onArchivedChange: (v: boolean) => void;
   loading: boolean;
+  channels: ChannelOption[];
+  channelId: string;
+  onChannelChange: (v: string) => void;
 }
 
 export function ConversationList({
@@ -38,6 +46,9 @@ export function ConversationList({
   archived,
   onArchivedChange,
   loading,
+  channels,
+  channelId,
+  onChannelChange,
 }: Props) {
   return (
     <aside className="conv-list">
@@ -48,6 +59,18 @@ export function ConversationList({
           onChange={(e) => onSearch(e.target.value)}
         />
       </div>
+      {channels.length > 1 && (
+        <div className="conv-channel-filter">
+          <select value={channelId} onChange={(e) => onChannelChange(e.target.value)}>
+            <option value="">Todos os canais</option>
+            {channels.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="conv-tabs">
         <button className={!archived ? 'active' : ''} onClick={() => onArchivedChange(false)}>
           Ativas
@@ -80,6 +103,7 @@ export function ConversationList({
                   <span className="conv-preview">{c.lastMessage?.content ?? '—'}</span>
                   {c.unreadCount > 0 && <span className="unread">{c.unreadCount}</span>}
                 </span>
+                {c.channel && <span className="conv-channel">{c.channel.name}</span>}
                 {c.tags.length > 0 && (
                   <span className="conv-tags">
                     {c.tags.map((t) => (

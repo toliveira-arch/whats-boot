@@ -2,7 +2,7 @@ import { prisma, runWithTenant, Prisma } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
 import { decryptSecret } from '../../lib/crypto';
 import { broadcastToTenant } from '../../realtime/emitter';
-import { queues, QUEUE_NAMES } from '../../queues';
+import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { createEvolutionClient, type SendMediaBody } from './evolution.client';
 
 type MediaType = SendMediaBody['mediatype'];
@@ -127,14 +127,19 @@ export async function sendText(input: SendTextInput) {
     data: { lastMessageAt: new Date(), lastOutboundAt: new Date() },
   });
 
-  await queues[QUEUE_NAMES.outboundMessages].add('send', {
-    tenantId: input.tenantId,
-    channelId: channel.id,
-    messageId: message.id,
-    kind: 'text',
-    number: sendNumber,
-    text: input.text,
-  } satisfies OutboundJob);
+  await enqueueOrRun(
+    QUEUE_NAMES.outboundMessages,
+    {
+      tenantId: input.tenantId,
+      channelId: channel.id,
+      messageId: message.id,
+      kind: 'text',
+      number: sendNumber,
+      text: input.text,
+    } satisfies OutboundJob,
+    {},
+    processOutbound,
+  );
 
   broadcastToTenant(input.tenantId, 'message.created', {
     conversationId: conversation.id,
@@ -185,18 +190,23 @@ export async function sendMedia(input: SendMediaInput) {
     data: { lastMessageAt: new Date(), lastOutboundAt: new Date() },
   });
 
-  await queues[QUEUE_NAMES.outboundMessages].add('send', {
-    tenantId: input.tenantId,
-    channelId: channel.id,
-    messageId: message.id,
-    kind: 'media',
-    number: sendNumber,
-    mediatype: input.mediatype,
-    media: input.media,
-    mimetype: input.mimetype,
-    fileName: input.fileName,
-    caption: input.caption,
-  } satisfies OutboundJob);
+  await enqueueOrRun(
+    QUEUE_NAMES.outboundMessages,
+    {
+      tenantId: input.tenantId,
+      channelId: channel.id,
+      messageId: message.id,
+      kind: 'media',
+      number: sendNumber,
+      mediatype: input.mediatype,
+      media: input.media,
+      mimetype: input.mimetype,
+      fileName: input.fileName,
+      caption: input.caption,
+    } satisfies OutboundJob,
+    {},
+    processOutbound,
+  );
 
   broadcastToTenant(input.tenantId, 'message.created', {
     conversationId: conversation.id,

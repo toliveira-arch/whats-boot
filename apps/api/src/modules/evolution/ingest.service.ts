@@ -1,7 +1,8 @@
 import { prisma, runWithTenant, Prisma } from '@whats-boot/database';
 import { logger } from '../../lib/logger';
 import { broadcastToTenant } from '../../realtime/emitter';
-import { queues, QUEUE_NAMES } from '../../queues';
+import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
+import { generateReplyJob } from '../ai/ai.service';
 import {
   extractText,
   mapAckStatus,
@@ -121,6 +122,7 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
   broadcastToTenant(channel.tenantId, 'message.created', {
     conversationId: conversation.id,
     contactId: contact.id,
+    channelId: channel.id,
     direction: fromMe ? 'OUTBOUND' : 'INBOUND',
     content: extractText(data?.message),
     waMessageId,
@@ -130,10 +132,11 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
   // Dispara a IA para mensagens recebidas (o agente decide se/como responde).
   // Curto-circuito: se a instância tem a IA desligada, nem enfileira.
   if (!fromMe && channel.aiEnabled) {
-    await queues[QUEUE_NAMES.aiProcess].add(
-      'reply',
+    await enqueueOrRun(
+      QUEUE_NAMES.aiProcess,
       { conversationId: conversation.id, tenantId: channel.tenantId },
       { jobId: `ai:${waMessageId}` },
+      generateReplyJob,
     );
   }
 }

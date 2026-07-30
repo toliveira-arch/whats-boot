@@ -79,3 +79,26 @@ banco no `useEffect`).
 
 Campos novos: `EvolutionInstance.aiEnabled` (default `true`) e
 `Conversation.aiEnabled` (`Boolean?`). Rode **`npm run db:push`** após o pull.
+
+## Separação por cliente (instância)
+
+O Chat tem um seletor **"Todos os canais"** (aparece quando há mais de uma
+instância) que filtra as conversas por instância; cada conversa mostra o nome do
+canal. O Monitor atribui cada evento do feed à sua instância. Tudo continua
+isolado por tenant.
+
+## Por que as mensagens podem não espelhar (checklist)
+
+O espelhamento em tempo real depende de a Evolution conseguir **entregar
+webhooks** na API e de o processamento rodar:
+
+1. **Worker rodando** — `npm run dev` agora sobe `api` + `worker` + `web`. Sem o
+   worker (ou sem Redis), a API processa os webhooks **inline** como fallback,
+   então o espelhamento funciona mesmo sem Redis em desenvolvimento.
+2. **API acessível pela Evolution** — a Evolution chama
+   `API_PUBLIC_URL/webhooks/evolution/:id`. Em `localhost`, um servidor Evolution
+   remoto **não alcança** sua máquina. Use um túnel (ex.: `cloudflared` ou
+   `ngrok`) e defina `API_PUBLIC_URL` para a URL pública **antes** de cadastrar a
+   instância (o webhook é configurado no cadastro).
+3. **Re-set do webhook** — se mudou a `API_PUBLIC_URL` depois de cadastrar,
+   recadastre a instância (ou reconecte) para reconfigurar o webhook.

@@ -17,6 +17,11 @@ export interface ChatTag {
 
 export type AiMode = 'OFF' | 'COPILOT' | 'AUTOPILOT';
 
+export interface ChannelRef {
+  id: string;
+  name: string;
+}
+
 export interface ConversationListItem {
   id: string;
   status: string;
@@ -27,6 +32,7 @@ export interface ConversationListItem {
   aiEnabled: boolean | null;
   lastMessageAt: string | null;
   contact: ChatContact;
+  channel: ChannelRef | null;
   tags: ChatTag[];
   lastMessage: {
     content: string | null;
@@ -45,6 +51,7 @@ export interface ConversationDetail {
   aiMode: AiMode;
   aiEnabled: boolean | null;
   evolutionInstanceId: string;
+  channel: ChannelRef | null;
   contact: ChatContact;
   tags: ChatTag[];
 }
@@ -74,6 +81,7 @@ export interface ListFilters {
   q?: string;
   archived?: boolean;
   tagId?: string;
+  channelId?: string;
 }
 
 export function listConversations(f: ListFilters = {}): Promise<ConversationListItem[]> {
@@ -81,6 +89,7 @@ export function listConversations(f: ListFilters = {}): Promise<ConversationList
   if (f.q) qs.set('q', f.q);
   if (f.archived !== undefined) qs.set('archived', String(f.archived));
   if (f.tagId) qs.set('tagId', f.tagId);
+  if (f.channelId) qs.set('channelId', f.channelId);
   const s = qs.toString();
   return authFetch(`/conversations${s ? `?${s}` : ''}`);
 }
