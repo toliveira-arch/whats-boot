@@ -20,9 +20,11 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "db:generate": "npm run generate --workspace @whats-boot/database",
-    "db:migrate": "npm run migrate:dev --workspace @whats-boot/database",
-    "db:validate": "npm run validate --workspace @whats-boot/database",
+    "db:generate": "prisma generate --schema=packages/database/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=packages/database/prisma/schema.prisma",
+    "db:deploy": "prisma migrate deploy --schema=packages/database/prisma/schema.prisma",
+    "db:validate": "prisma validate --schema=packages/database/prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=packages/database/prisma/schema.prisma",
     "seed": "npm run seed --workspace @whats-boot/api",
     "prepare": "husky || true; npm run db:generate || true"
   },
@@ -37,6 +39,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.3.0",
     "prettier": "^3.4.2",
+    "prisma": "^6.1.0",
     "typescript": "^5.7.3"
   },
   "lint-staged": {
@@ -47,5 +50,8 @@
     "*.{js,json,md,yml,yaml,css}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
   }
 }

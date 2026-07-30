@@ -1,5 +1,28 @@
-import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+/**
+ * Carrega o `.env` mais próximo, subindo do cwd até a raiz do monorepo.
+ * Assim um único `.env` na raiz abastece a API mesmo quando executada de
+ * `apps/api` (npm workspaces). Variáveis já presentes no ambiente (ex.: Docker)
+ * têm prioridade — o dotenv não sobrescreve.
+ */
+(function loadEnvFile() {
+  let dir = process.cwd();
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      return;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  dotenv.config();
+})();
 
 /**
  * Validação centralizada das variáveis de ambiente.
