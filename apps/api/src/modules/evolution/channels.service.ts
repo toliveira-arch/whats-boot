@@ -41,6 +41,35 @@ function webhookUrl(channelId: string, token: string): string {
   return `${env.API_PUBLIC_URL.replace(/\/$/, '')}/webhooks/evolution/${channelId}?token=${token}`;
 }
 
+/**
+ * (Re)configura o webhook da instância na Evolution com a API_PUBLIC_URL atual.
+ * Chamado ao gerar QR e ao reconectar, para que mudar a URL pública (ex.: novo
+ * túnel) passe a valer sem precisar recadastrar a instância.
+ */
+async function syncWebhook(channel: {
+  id: string;
+  instanceName: string;
+  baseUrl: string;
+  apiKeyEncrypted: string;
+  webhookToken: string;
+}) {
+  try {
+    await clientFor(channel).setWebhook(channel.instanceName, {
+      enabled: true,
+      url: webhookUrl(channel.id, channel.webhookToken),
+      webhookByEvents: false,
+      webhookBase64: true,
+      events: WEBHOOK_EVENTS,
+    });
+    await prisma.evolutionInstance.update({
+      where: { id: channel.id },
+      data: { webhookUrl: webhookUrl(channel.id, channel.webhookToken) },
+    });
+  } catch (err) {
+    logger.warn({ err, channelId: channel.id }, 'falha ao re-sincronizar webhook (ignorado)');
+  }
+}
+
 export async function listChannels() {
   return prisma.evolutionInstance.findMany({
     where: { deletedAt: null },
@@ -162,6 +191,7 @@ async function loadChannel(channelId: string) {
 /** (Re)gera o QR Code conectando a instância. */
 export async function getQrCode(channelId: string) {
   const channel = await loadChannel(channelId);
+  await syncWebhook(channel); // garante o webhook com a URL pública atual
   const res = await clientFor(channel).connect(channel.instanceName);
   const base64 = res.base64 ?? null;
   await prisma.evolutionInstance.update({
@@ -202,6 +232,7 @@ export async function setChannelAiEnabled(channelId: string, enabled: boolean) {
 /** Reconecta (restart) a instância. */
 export async function reconnect(channelId: string) {
   const channel = await loadChannel(channelId);
+  await syncWebhook(channel); // re-sincroniza o webhook com a URL pública atual
   await clientFor(channel).restart(channel.instanceName);
   await prisma.evolutionInstance.update({
     where: { id: channel.id },
