@@ -132,15 +132,6 @@ function withinActiveHours(from: string | null, to: string | null): boolean {
   return hhmm >= from && hhmm <= to;
 }
 
-function applyForbidden(text: string, words: string[]): string {
-  let out = text;
-  for (const w of words) {
-    if (!w.trim()) continue;
-    out = out.replace(new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '***');
-  }
-  return out;
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -224,7 +215,9 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
       decryptSecret(credential.apiKeyEncrypted),
       credential.baseUrl ?? undefined,
     );
-    content = applyForbidden(result.content.trim(), agent.forbiddenWords);
+    // As palavras proibidas entram como INSTRUÇÃO no prompt (acima), não como
+    // censura no texto final — assim a resposta sai natural, sem "***".
+    content = result.content.trim();
 
     await prisma.aiUsageLog.create({
       data: {
@@ -288,7 +281,9 @@ export async function generateReplyJob(job: {
 }): Promise<void> {
   await runWithTenant(job.tenantId, async () => {
     const r = await generateReply(job.conversationId);
-    logger.debug({ conversationId: job.conversationId, ...r }, 'ai.process concluído');
+    // Info (não debug) para aparecer no log da nuvem e facilitar diagnóstico:
+    // mostra se respondeu (mode) ou por que pulou (skipped).
+    logger.info({ conversationId: job.conversationId, ...r }, 'ai.process concluído');
   });
 }
 
@@ -316,5 +311,5 @@ export async function testGenerate(input: { userMessage: string }): Promise<{ co
     decryptSecret(credential.apiKeyEncrypted),
     credential.baseUrl ?? undefined,
   );
-  return { content: applyForbidden(result.content.trim(), agent.forbiddenWords) };
+  return { content: result.content.trim() };
 }
