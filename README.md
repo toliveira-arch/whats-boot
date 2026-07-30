@@ -41,31 +41,57 @@ whats-boot/
 
 ## Desenvolvimento
 
-### Com Docker (recomendado)
+Você precisa de **PostgreSQL** e **Redis**. Escolha UMA das opções abaixo.
+Um único `.env` na raiz abastece tudo (a API procura o `.env` subindo até a raiz;
+os scripts de banco leem o mesmo `.env`).
+
+### Opção 1 — Tudo no Docker (precisa do Docker Desktop rodando)
 
 ```bash
 cp .env.example .env
 docker compose up -d          # postgres, redis, api, web
-docker compose logs -f api web
-# API:  http://localhost:3333
-# Web:  http://localhost:5173
+# API: http://localhost:3333 · Web: http://localhost:5173
 ```
 
-### Local (sem Docker) — sequência recomendada
-
-Um único `.env` na raiz abastece tudo (a API procura o `.env` subindo até a raiz;
-os scripts de banco leem o mesmo `.env`).
+### Opção 2 — App local + Postgres/Redis no Docker
 
 ```bash
-cp .env.example .env          # já vem com hosts localhost p/ dev local
-npm install                   # instala + gera o Prisma Client (via prepare)
+cp .env.example .env                  # já vem com hosts localhost
+npm install
 docker compose up -d postgres redis   # sobe só o banco e o cache
-npm run db:migrate -- --name init     # cria as tabelas
-npm run seed                  # cria admin (admin@whatsboot.dev / Admin123)
-npm run dev                   # api :3333 + web :5173
+npm run db:migrate -- --name init
+npm run seed                          # admin@whatsboot.dev / Admin123
+npm run dev                           # api :3333 + web :5173
 ```
 
-Confirme que a API subiu: `curl http://localhost:3333/health/ready`.
+### Opção 3 — SEM Docker (Postgres/Redis gerenciados)
+
+Se o Docker não estiver disponível (ex.: `docker` não existe no PowerShell), use
+serviços gratuitos na nuvem — nada para instalar:
+
+- **PostgreSQL:** crie um banco grátis no [Neon](https://neon.tech) ou
+  [Supabase](https://supabase.com) e copie a connection string.
+- **Redis:** crie um grátis no [Upstash](https://upstash.com) e copie a URL
+  (`rediss://...`).
+
+No `.env` da raiz, troque as duas linhas:
+
+```env
+DATABASE_URL=postgresql://usuario:senha@host-neon/db?sslmode=require
+REDIS_URL=rediss://default:senha@host-upstash:6379
+```
+
+Depois:
+
+```bash
+npm install
+npm run db:migrate -- --name init
+npm run seed
+npm run dev
+```
+
+> Confirme que a API subiu: `curl http://localhost:3333/health/ready`
+> (deve responder `{"status":"ready", ...}`).
 
 ## Scripts (raiz)
 
