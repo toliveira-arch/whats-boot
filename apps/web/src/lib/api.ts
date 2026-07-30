@@ -32,16 +32,25 @@ async function messageOf(res: Response): Promise<string> {
   }
 }
 
-/** Renova o access token usando o cookie httpOnly de refresh. */
+/**
+ * Renova o access token usando o cookie httpOnly de refresh.
+ * Nunca lança: erros de rede / API indisponível resultam em `null`
+ * (o app cai para a tela de login em vez de travar).
+ */
 export async function refreshAccessToken(): Promise<string | null> {
-  const res = await rawFetch('/auth/refresh', { method: 'POST' });
-  if (!res.ok) {
+  try {
+    const res = await rawFetch('/auth/refresh', { method: 'POST' });
+    if (!res.ok) {
+      accessToken = null;
+      return null;
+    }
+    const data = (await res.json()) as { accessToken: string };
+    accessToken = data.accessToken;
+    return accessToken;
+  } catch {
     accessToken = null;
     return null;
   }
-  const data = (await res.json()) as { accessToken: string };
-  accessToken = data.accessToken;
-  return accessToken;
 }
 
 function withHeaders(init: RequestInit, token: string | null): RequestInit {

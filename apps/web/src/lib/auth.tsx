@@ -22,19 +22,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
-      const token = await refreshAccessToken();
-      if (!active) return;
-      if (!token) {
-        setStatus('unauthenticated');
-        return;
-      }
       try {
+        const token = await refreshAccessToken();
+        if (!active) return;
+        if (!token) {
+          setStatus('unauthenticated');
+          return;
+        }
         const me = await authFetch<Profile>('/auth/me');
         if (!active) return;
         connectSocket(token);
         setProfile(me);
         setStatus('authenticated');
       } catch {
+        // API indisponível / erro inesperado → cai para a tela de login.
         if (active) setStatus('unauthenticated');
       }
     })();
