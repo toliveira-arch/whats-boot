@@ -7,7 +7,9 @@ import { logger } from './logger';
  * "inline": filas processadas em processo e Socket.IO local (sem adapter).
  * Com `REDIS_URL` (Redis >= 5), habilita filas BullMQ e escala horizontal.
  */
-export const redisEnabled = Boolean(env.REDIS_URL);
+// Redis só entra em ação quando explicitamente habilitado E com URL definida.
+// Ter um REDIS_URL sobrando (ou um Redis local incompatível) não afeta o app.
+export const redisEnabled = env.REDIS_ENABLED && Boolean(env.REDIS_URL);
 
 /** Conexão Redis de uso geral (null quando Redis está desabilitado). */
 export const redis: Redis | null = redisEnabled

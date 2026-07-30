@@ -34,7 +34,10 @@ const envSchema = z.object({
 
   API_PORT: z.coerce.number().int().positive().default(3333),
   API_HOST: z.string().default('0.0.0.0'),
-  CORS_ORIGINS: z.string().default('http://localhost:5173'),
+  // Inclui 5174/5175 porque o Vite pula de porta quando a 5173 está ocupada.
+  CORS_ORIGINS: z
+    .string()
+    .default('http://localhost:5173,http://localhost:5174,http://localhost:5175'),
 
   // URL pública da API alcançável pela Evolution API (para os webhooks).
   API_PUBLIC_URL: z.string().url().default('http://localhost:3333'),
@@ -43,10 +46,15 @@ const envSchema = z.object({
   EVOLUTION_ENC_KEY: z.string().optional(),
 
   DATABASE_URL: z.string().url(),
-  // Redis é OPCIONAL. Sem REDIS_URL, o sistema roda tudo em processo (filas
-  // inline + Socket.IO local) — ideal para desenvolvimento e single-node.
-  // Defina REDIS_URL (Redis >= 5) para escalar com worker separado.
+  // Redis é OPT-IN. Por padrão o sistema roda TUDO em processo (filas inline +
+  // Socket.IO local) — ideal para dev e single-node. Só usa Redis/BullMQ quando
+  // REDIS_ENABLED=true E REDIS_URL apontam para um Redis >= 5. Assim, ter um
+  // REDIS_URL sobrando (ou um Redis local antigo) NÃO quebra nada.
   REDIS_URL: z.string().url().optional(),
+  REDIS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 
   JWT_ACCESS_SECRET: z.string().min(1).default('dev-access-secret'),
   JWT_REFRESH_SECRET: z.string().min(1).default('dev-refresh-secret'),
