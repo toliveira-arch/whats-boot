@@ -74,6 +74,7 @@ export async function listConversations(params: ListConversationsParams) {
     isArchived: c.isArchived,
     unreadCount: c.unreadCount,
     aiMode: c.aiMode,
+    aiEnabled: c.aiEnabled,
     assignedToId: c.assignedToId,
     lastMessageAt: c.lastMessageAt,
     contact: c.contact,
@@ -104,6 +105,7 @@ export async function getConversation(conversationId: string) {
     isArchived: c.isArchived,
     unreadCount: c.unreadCount,
     aiMode: c.aiMode,
+    aiEnabled: c.aiEnabled,
     assignedToId: c.assignedToId,
     evolutionInstanceId: c.evolutionInstanceId,
     lastMessageAt: c.lastMessageAt,
@@ -202,6 +204,8 @@ export interface UpdateConversationInput {
   isPinned?: boolean;
   isArchived?: boolean;
   assignedToId?: string | null;
+  aiMode?: 'OFF' | 'COPILOT' | 'AUTOPILOT';
+  aiEnabled?: boolean | null;
 }
 
 export async function updateConversation(conversationId: string, patch: UpdateConversationInput) {
@@ -215,6 +219,8 @@ export async function updateConversation(conversationId: string, patch: UpdateCo
         ? { isArchived: patch.isArchived, archivedAt: patch.isArchived ? new Date() : null }
         : {}),
       ...(patch.assignedToId !== undefined ? { assignedToId: patch.assignedToId } : {}),
+      ...(patch.aiMode !== undefined ? { aiMode: patch.aiMode } : {}),
+      ...(patch.aiEnabled !== undefined ? { aiEnabled: patch.aiEnabled } : {}),
     },
   });
   broadcastToTenant(currentTenantId(), 'conversation.updated', { conversationId });
@@ -223,6 +229,8 @@ export async function updateConversation(conversationId: string, patch: UpdateCo
     status: updated.status,
     isPinned: updated.isPinned,
     isArchived: updated.isArchived,
+    aiMode: updated.aiMode,
+    aiEnabled: updated.aiEnabled,
   };
 }
 

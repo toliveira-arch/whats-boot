@@ -760,6 +760,7 @@ model EvolutionInstance {
   profileName     String?
   profilePicUrl   String?
   status          EvolutionInstanceStatus @default(CREATED)
+  aiEnabled       Boolean                 @default(true) // liga/desliga o robô de IA nesta instância
   qrCode          String?
   webhookToken    String                  @unique
   webhookUrl      String?
@@ -905,6 +906,7 @@ model Conversation {
   priority            ConversationPriority @default(NORMAL)
   subject             String?
   aiMode              AiMode               @default(OFF)
+  aiEnabled           Boolean? // override por conversa: null=herda instância/agente, true/false=forçado
   unreadCount         Int                  @default(0)
   isPinned            Boolean              @default(false)
   isArchived          Boolean              @default(false)

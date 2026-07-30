@@ -15,12 +15,16 @@ export interface ChatTag {
   color: string | null;
 }
 
+export type AiMode = 'OFF' | 'COPILOT' | 'AUTOPILOT';
+
 export interface ConversationListItem {
   id: string;
   status: string;
   isPinned: boolean;
   isArchived: boolean;
   unreadCount: number;
+  aiMode: AiMode;
+  aiEnabled: boolean | null;
   lastMessageAt: string | null;
   contact: ChatContact;
   tags: ChatTag[];
@@ -38,6 +42,8 @@ export interface ConversationDetail {
   isPinned: boolean;
   isArchived: boolean;
   unreadCount: number;
+  aiMode: AiMode;
+  aiEnabled: boolean | null;
   evolutionInstanceId: string;
   contact: ChatContact;
   tags: ChatTag[];
@@ -104,7 +110,13 @@ export function markRead(id: string): Promise<{ ok: boolean }> {
 
 export function updateConversation(
   id: string,
-  patch: { status?: string; isPinned?: boolean; isArchived?: boolean },
+  patch: {
+    status?: string;
+    isPinned?: boolean;
+    isArchived?: boolean;
+    aiMode?: AiMode;
+    aiEnabled?: boolean | null;
+  },
 ): Promise<unknown> {
   return authFetch(`/conversations/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
 }

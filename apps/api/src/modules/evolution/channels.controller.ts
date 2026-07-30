@@ -34,3 +34,7 @@ export const logoutChannelController = asyncHandler(async (req, res) => {
 export const deleteChannelController = asyncHandler(async (req, res) => {
   res.json(await channels.deleteChannel(req.params.channelId!));
 });
+
+export const setChannelAiController = asyncHandler(async (req, res) => {
+  res.json(await channels.setChannelAiEnabled(req.params.channelId!, req.body.enabled));
+});

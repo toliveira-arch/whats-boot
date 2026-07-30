@@ -18,6 +18,8 @@ export const updateConversationSchema = z.object({
   isPinned: z.boolean().optional(),
   isArchived: z.boolean().optional(),
   assignedToId: z.string().nullable().optional(),
+  aiMode: z.enum(['OFF', 'COPILOT', 'AUTOPILOT']).optional(),
+  aiEnabled: z.boolean().nullable().optional(),
 });
 
 export const createTagSchema = z.object({

@@ -5,6 +5,8 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
 import { Chat } from './pages/Chat';
+import { Channels } from './pages/Channels';
+import { Monitor } from './pages/Monitor';
 import { AiSettings } from './pages/AiSettings';
 
 function ProtectedLayout() {
@@ -30,6 +32,8 @@ export function App() {
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/channels" element={<Channels />} />
+        <Route path="/monitor" element={<Monitor />} />
         <Route path="/ai" element={<AiSettings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

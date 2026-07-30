@@ -12,6 +12,7 @@ import { healthRouter } from './routes/health';
 import { authRouter } from './modules/auth/auth.routes';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { channelsRouter } from './modules/evolution/channels.routes';
+import { companiesRouter } from './modules/companies/companies.routes';
 import { messagesRouter } from './modules/evolution/messages.routes';
 import { webhookRouter } from './modules/evolution/webhook.routes';
 import { conversationsRouter, tagsRouter } from './modules/conversations/conversations.routes';
@@ -44,6 +45,7 @@ export function createApp(): Express {
   // Módulos
   app.use('/auth', authRouter);
   app.use('/dashboard', dashboardRouter);
+  app.use('/companies', companiesRouter);
   app.use('/channels', channelsRouter);
   app.use('/messages', messagesRouter);
   app.use('/webhooks', webhookRouter);

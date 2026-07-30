@@ -21,12 +21,12 @@ function jidToPhone(jid: string): string {
   return jid.split('@')[0] ?? jid;
 }
 
-type Channel = { id: string; companyId: string; tenantId: string };
+type Channel = { id: string; companyId: string; tenantId: string; aiEnabled: boolean };
 
 async function loadChannel(channelId: string): Promise<Channel | null> {
   return prisma.evolutionInstance.findFirst({
     where: { id: channelId },
-    select: { id: true, companyId: true, tenantId: true },
+    select: { id: true, companyId: true, tenantId: true, aiEnabled: true },
   });
 }
 
@@ -128,7 +128,8 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
   broadcastToTenant(channel.tenantId, 'conversation.updated', { conversationId: conversation.id });
 
   // Dispara a IA para mensagens recebidas (o agente decide se/como responde).
-  if (!fromMe) {
+  // Curto-circuito: se a instância tem a IA desligada, nem enfileira.
+  if (!fromMe && channel.aiEnabled) {
     await queues[QUEUE_NAMES.aiProcess].add(
       'reply',
       { conversationId: conversation.id, tenantId: channel.tenantId },

@@ -210,6 +210,14 @@ export function Chat() {
             await chat.addNote(conversation.id, body);
             loadNotes(conversation.id);
           }}
+          onSetAiMode={async (mode) => {
+            await chat.updateConversation(conversation.id, { aiMode: mode });
+            await refreshDetail();
+          }}
+          onToggleAiEnabled={async (enabled) => {
+            await chat.updateConversation(conversation.id, { aiEnabled: enabled });
+            await refreshDetail();
+          }}
         />
       )}
     </div>

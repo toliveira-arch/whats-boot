@@ -155,12 +155,24 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   const tid = tenantId();
   const conversation = await prisma.conversation.findFirst({
     where: { id: conversationId, deletedAt: null },
-    include: { contact: { select: { waJid: true, phoneNumber: true } } },
+    include: {
+      contact: { select: { waJid: true, phoneNumber: true } },
+      evolutionInstance: { select: { aiEnabled: true } },
+    },
   });
   if (!conversation) return { skipped: 'conversation-not-found' };
 
+  // Isolamento de toggles: instância desligada > conversa desligada > agente.
+  if (!conversation.evolutionInstance.aiEnabled) return { skipped: 'instance-ai-off' };
+  if (conversation.aiEnabled === false) return { skipped: 'conversation-ai-off' };
+
   const agent = await getAgent();
-  if (!agent || !agent.isActive || agent.mode === 'OFF') return { skipped: 'agent-disabled' };
+  if (!agent || !agent.isActive) return { skipped: 'agent-disabled' };
+
+  // Modo efetivo: a conversa pode sobrescrever o modo global do agente.
+  const effectiveMode =
+    conversation.aiMode && conversation.aiMode !== 'OFF' ? conversation.aiMode : agent.mode;
+  if (effectiveMode === 'OFF') return { skipped: 'mode-off' };
   if (!withinActiveHours(agent.activeFrom, agent.activeTo)) return { skipped: 'outside-hours' };
 
   if (agent.maxMessagesPerConversation != null) {
@@ -252,7 +264,7 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
     await sleep((min + Math.floor((max - min) * 0.5)) * 1000);
   }
 
-  if (agent.mode === 'AUTOPILOT') {
+  if (effectiveMode === 'AUTOPILOT') {
     const number = conversation.contact.waJid ?? conversation.contact.phoneNumber ?? '';
     await messaging.sendText({
       tenantId: tid,

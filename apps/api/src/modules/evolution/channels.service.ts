@@ -27,6 +27,7 @@ function publicSelect() {
     phoneNumber: true,
     profileName: true,
     status: true,
+    aiEnabled: true,
     createdAt: true,
     connectedAt: true,
   } as const;
@@ -162,9 +163,22 @@ export async function getState(channelId: string) {
     data: {
       status,
       ...(status === 'CONNECTED' ? { connectedAt: new Date() } : {}),
+      ...(status === 'DISCONNECTED' ? { disconnectedAt: new Date() } : {}),
     },
   });
+  broadcastToTenant(channel.tenantId, 'channel.status', { channelId: channel.id, status });
   return { status, raw: res.instance?.state ?? null };
+}
+
+/** Liga/desliga o robô de IA para uma instância inteira. */
+export async function setChannelAiEnabled(channelId: string, enabled: boolean) {
+  const channel = await loadChannel(channelId);
+  await prisma.evolutionInstance.update({
+    where: { id: channel.id },
+    data: { aiEnabled: enabled },
+  });
+  broadcastToTenant(channel.tenantId, 'channel.ai', { channelId: channel.id, aiEnabled: enabled });
+  return { id: channel.id, aiEnabled: enabled };
 }
 
 /** Reconecta (restart) a instância. */

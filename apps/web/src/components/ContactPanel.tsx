@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { ChatNote, ChatTag, ConversationDetail } from '../lib/chat';
+import type { AiMode, ChatNote, ChatTag, ConversationDetail } from '../lib/chat';
 
 interface Props {
   conversation: ConversationDetail;
@@ -9,6 +9,8 @@ interface Props {
   onRemoveTag: (tagId: string) => void;
   onCreateTag: (name: string) => void;
   onAddNote: (body: string) => void;
+  onSetAiMode: (mode: AiMode) => void;
+  onToggleAiEnabled: (enabled: boolean | null) => void;
 }
 
 export function ContactPanel({
@@ -19,6 +21,8 @@ export function ContactPanel({
   onRemoveTag,
   onCreateTag,
   onAddNote,
+  onSetAiMode,
+  onToggleAiEnabled,
 }: Props) {
   const [newTag, setNewTag] = useState('');
   const [noteBody, setNoteBody] = useState('');
@@ -46,6 +50,28 @@ export function ContactPanel({
         <div className="cp-avatar">{(c.name || c.pushName || 'C').slice(0, 1).toUpperCase()}</div>
         <div className="cp-name">{c.name || c.pushName || 'Contato'}</div>
         <div className="sub">{c.phoneNumber}</div>
+      </div>
+
+      <div className="cp-section">
+        <h3>Robô de IA nesta conversa</h3>
+        <label className="ai-toggle">
+          <input
+            type="checkbox"
+            checked={conversation.aiEnabled !== false}
+            onChange={(e) => onToggleAiEnabled(e.target.checked ? null : false)}
+          />
+          <span>{conversation.aiEnabled === false ? 'Desligado (manual)' : 'Ligado'}</span>
+        </label>
+        <select
+          className="cp-select"
+          value={conversation.aiMode}
+          disabled={conversation.aiEnabled === false}
+          onChange={(e) => onSetAiMode(e.target.value as AiMode)}
+        >
+          <option value="OFF">Modo: usar padrão do agente</option>
+          <option value="COPILOT">Modo: Copiloto (sugere)</option>
+          <option value="AUTOPILOT">Modo: Autopilot (responde)</option>
+        </select>
       </div>
 
       <div className="cp-section">

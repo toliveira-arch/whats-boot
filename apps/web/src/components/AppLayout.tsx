@@ -16,6 +16,12 @@ export function AppLayout() {
         <NavLink to="/chat" className={linkClass}>
           Chat
         </NavLink>
+        <NavLink to="/channels" className={linkClass}>
+          Canais
+        </NavLink>
+        <NavLink to="/monitor" className={linkClass}>
+          Monitor
+        </NavLink>
         <NavLink to="/ai" className={linkClass}>
           IA
         </NavLink>

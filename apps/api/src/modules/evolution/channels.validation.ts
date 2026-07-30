@@ -18,4 +18,8 @@ export const testConnectionSchema = z.object({
   apiKey: z.string().min(1),
 });
 
+export const setChannelAiSchema = z.object({
+  enabled: z.boolean(),
+});
+
 export type CreateChannelInput = z.infer<typeof createChannelSchema>;

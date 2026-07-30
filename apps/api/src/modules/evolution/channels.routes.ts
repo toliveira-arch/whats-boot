@@ -3,7 +3,11 @@ import { authenticate } from '../../middlewares/authenticate';
 import { tenantContext } from '../../middlewares/tenantContext';
 import { requirePermissions } from '../../middlewares/authorize';
 import { validateBody } from '../../middlewares/validate';
-import { createChannelSchema, testConnectionSchema } from './channels.validation';
+import {
+  createChannelSchema,
+  setChannelAiSchema,
+  testConnectionSchema,
+} from './channels.validation';
 import {
   createChannelController,
   deleteChannelController,
@@ -11,6 +15,7 @@ import {
   logoutChannelController,
   qrCodeController,
   reconnectController,
+  setChannelAiController,
   stateController,
   testConnectionController,
 } from './channels.controller';
@@ -47,6 +52,12 @@ channelsRouter.post(
   '/:channelId/logout',
   requirePermissions('channels.manage'),
   logoutChannelController,
+);
+channelsRouter.patch(
+  '/:channelId/ai',
+  requirePermissions('channels.manage'),
+  validateBody(setChannelAiSchema),
+  setChannelAiController,
 );
 channelsRouter.delete(
   '/:channelId',
