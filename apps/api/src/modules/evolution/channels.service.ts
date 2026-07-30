@@ -219,6 +219,42 @@ export async function getState(channelId: string) {
   return { status, raw: res.instance?.state ?? null };
 }
 
+/**
+ * Diagnóstico do espelhamento: mostra a URL que a Evolution tem configurada, a
+ * URL esperada (API_PUBLIC_URL atual) e os últimos eventos de webhook recebidos.
+ */
+export async function diagnostics(channelId: string) {
+  const channel = await loadChannel(channelId);
+  const expectedWebhookUrl = webhookUrl(channel.id, channel.webhookToken);
+
+  let evolutionWebhook: unknown = null;
+  let evolutionError: string | null = null;
+  try {
+    evolutionWebhook = await clientFor(channel).findWebhook(channel.instanceName);
+  } catch (err) {
+    evolutionError = err instanceof Error ? err.message : String(err);
+  }
+
+  const recentEvents = await prisma.webhookEvent.findMany({
+    where: { evolutionInstanceId: channel.id },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+    select: { event: true, status: true, externalId: true, createdAt: true },
+  });
+
+  return {
+    instanceName: channel.instanceName,
+    status: channel.status,
+    apiPublicUrl: env.API_PUBLIC_URL,
+    expectedWebhookUrl,
+    storedWebhookUrl: channel.webhookUrl,
+    evolutionWebhook,
+    evolutionError,
+    webhookEventsReceived: recentEvents.length,
+    recentEvents,
+  };
+}
+
 /** Liga/desliga o robô de IA para uma instância inteira. */
 export async function setChannelAiEnabled(channelId: string, enabled: boolean) {
   const channel = await loadChannel(channelId);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { getSocket } from '../lib/socket';
 import * as ch from '../lib/channels';
-import type { Channel, ChannelStatus, Company } from '../lib/channels';
+import type { Channel, ChannelStatus, Company, Diagnostics } from '../lib/channels';
 import { ApiError } from '../lib/api';
 
 const EMPTY_FORM = {
@@ -33,6 +33,8 @@ export function Channels() {
     base64: string | null;
     pairing: string | null;
   } | null>(null);
+  const [diag, setDiag] = useState<Diagnostics | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
 
   const loadChannels = useCallback(async () => {
     try {
@@ -179,6 +181,18 @@ export function Channels() {
     await loadChannels();
   }
 
+  async function openDiag(channelId: string) {
+    setDiag(null);
+    setDiagLoading(true);
+    try {
+      setDiag(await ch.getDiagnostics(channelId));
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Falha ao carregar diagnóstico');
+    } finally {
+      setDiagLoading(false);
+    }
+  }
+
   return (
     <div className="settings wide">
       <div className="page-head">
@@ -308,6 +322,9 @@ export function Channels() {
                 <button className="btn ghost sm" onClick={() => void onReconnect(c.id)}>
                   Reconectar
                 </button>
+                <button className="btn ghost sm" onClick={() => void openDiag(c.id)}>
+                  Diagnóstico
+                </button>
                 <button className="btn ghost sm" onClick={() => void onLogout(c.id)}>
                   Desconectar
                 </button>
@@ -346,6 +363,78 @@ export function Channels() {
           </div>
         </div>
       )}
+
+      {(diag || diagLoading) && (
+        <div className="modal-backdrop" onClick={() => setDiag(null)}>
+          <div className="modal diag" onClick={(e) => e.stopPropagation()}>
+            <h2>Diagnóstico do espelhamento</h2>
+            {diagLoading && <p className="sub">Consultando a Evolution…</p>}
+            {diag && (
+              <div className="diag-body">
+                <p>
+                  <strong>Webhooks recebidos (últimos):</strong>{' '}
+                  {diag.webhookEventsReceived > 0 ? (
+                    <span className="ok-text">{diag.webhookEventsReceived} ✅</span>
+                  ) : (
+                    <span className="fail-text">nenhum ❌</span>
+                  )}
+                </p>
+                <p className="diag-line">
+                  <span className="sub">URL esperada (sua API):</span>
+                  <code>{diag.expectedWebhookUrl}</code>
+                </p>
+                <p className="diag-line">
+                  <span className="sub">URL configurada na Evolution:</span>
+                  <code>{webhookUrlOf(diag.evolutionWebhook) ?? '—'}</code>
+                </p>
+                {diag.evolutionError && (
+                  <p className="fail-text">Erro ao consultar a Evolution: {diag.evolutionError}</p>
+                )}
+                {webhookUrlOf(diag.evolutionWebhook) &&
+                  webhookUrlOf(diag.evolutionWebhook) !== diag.expectedWebhookUrl && (
+                    <p className="fail-text">
+                      ⚠️ As URLs são diferentes. Clique em <strong>Reconectar</strong> para
+                      re-sincronizar o webhook.
+                    </p>
+                  )}
+                {diag.webhookEventsReceived === 0 && (
+                  <p className="sub">
+                    Sem eventos: a Evolution não está alcançando sua API. Confira o túnel
+                    (cloudflared aberto), a <code>API_PUBLIC_URL</code> e se a URL acima aponta para
+                    o túnel.
+                  </p>
+                )}
+                {diag.recentEvents.length > 0 && (
+                  <ul className="diag-events">
+                    {diag.recentEvents.map((e, i) => (
+                      <li key={i}>
+                        <span className="feed-channel">{e.event}</span>
+                        <span className="sub">
+                          {e.status} · {new Date(e.createdAt).toLocaleTimeString('pt-BR')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <div className="row-actions">
+              <button className="btn" onClick={() => setDiag(null)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** Extrai a URL do webhook da resposta da Evolution (formato varia por versão). */
+function webhookUrlOf(evolutionWebhook: unknown): string | null {
+  if (!evolutionWebhook || typeof evolutionWebhook !== 'object') return null;
+  const obj = evolutionWebhook as Record<string, unknown>;
+  const nested = obj.webhook as Record<string, unknown> | undefined;
+  const url = (obj.url ?? nested?.url) as string | undefined;
+  return typeof url === 'string' ? url : null;
 }

@@ -95,6 +95,22 @@ export function removeChannel(channelId: string): Promise<{ ok: boolean }> {
   return authFetch(`/channels/${channelId}`, { method: 'DELETE' });
 }
 
+export interface Diagnostics {
+  instanceName: string;
+  status: ChannelStatus;
+  apiPublicUrl: string;
+  expectedWebhookUrl: string;
+  storedWebhookUrl: string | null;
+  evolutionWebhook: unknown;
+  evolutionError: string | null;
+  webhookEventsReceived: number;
+  recentEvents: { event: string; status: string; externalId: string | null; createdAt: string }[];
+}
+
+export function getDiagnostics(channelId: string): Promise<Diagnostics> {
+  return authFetch(`/channels/${channelId}/diagnostics`);
+}
+
 export const STATUS_LABEL: Record<ChannelStatus, string> = {
   CREATED: 'Criada',
   QRCODE: 'Aguardando QR',

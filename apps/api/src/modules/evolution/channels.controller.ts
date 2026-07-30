@@ -38,3 +38,7 @@ export const deleteChannelController = asyncHandler(async (req, res) => {
 export const setChannelAiController = asyncHandler(async (req, res) => {
   res.json(await channels.setChannelAiEnabled(req.params.channelId!, req.body.enabled));
 });
+
+export const diagnosticsController = asyncHandler(async (req, res) => {
+  res.json(await channels.diagnostics(req.params.channelId!));
+});

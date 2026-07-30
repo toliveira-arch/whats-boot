@@ -11,6 +11,7 @@ import {
 import {
   createChannelController,
   deleteChannelController,
+  diagnosticsController,
   listChannelsController,
   logoutChannelController,
   qrCodeController,
@@ -43,6 +44,11 @@ channelsRouter.post(
 
 channelsRouter.get('/:channelId/qrcode', requirePermissions('channels.manage'), qrCodeController);
 channelsRouter.get('/:channelId/state', requirePermissions('channels.read'), stateController);
+channelsRouter.get(
+  '/:channelId/diagnostics',
+  requirePermissions('channels.read'),
+  diagnosticsController,
+);
 channelsRouter.post(
   '/:channelId/reconnect',
   requirePermissions('channels.manage'),

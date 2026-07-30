@@ -104,6 +104,8 @@ export function createEvolutionClient(baseUrl: string, apikey: string) {
       request('DELETE', baseUrl, `/instance/delete/${instance}`, apikey),
     setWebhook: (instance: string, webhook: EvolutionWebhookConfig) =>
       request('POST', baseUrl, `/webhook/set/${instance}`, apikey, { webhook }),
+    findWebhook: (instance: string) =>
+      request<Record<string, unknown>>('GET', baseUrl, `/webhook/find/${instance}`, apikey),
     sendText: (instance: string, body: SendTextBody) =>
       request<Record<string, unknown>>(
         'POST',
