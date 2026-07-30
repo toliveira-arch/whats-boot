@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "concurrently -n api,worker,web -c blue,yellow,magenta \"npm:dev:api\" \"npm:dev:worker\" \"npm:dev:web\"",
     "dev:api": "npm run dev --workspace @whats-boot/api",
-    "dev:worker": "npm run worker --workspace @whats-boot/api",
+    "dev:worker": "npm run worker --workspace @whats-boot/api || true",
     "dev:web": "npm run dev --workspace @whats-boot/web",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
