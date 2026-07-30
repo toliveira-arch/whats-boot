@@ -906,6 +906,9 @@ model Conversation {
   subject             String?
   aiMode              AiMode               @default(OFF)
   unreadCount         Int                  @default(0)
+  isPinned            Boolean              @default(false)
+  isArchived          Boolean              @default(false)
+  archivedAt          DateTime?
   waRemoteJid         String?
   lastMessageAt       DateTime?
   lastInboundAt       DateTime?

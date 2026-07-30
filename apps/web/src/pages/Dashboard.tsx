@@ -36,7 +36,7 @@ function MessagesChart({ data }: { data: { date: string; count: number }[] }) {
 }
 
 export function Dashboard() {
-  const { profile, logout } = useAuth();
+  const { profile } = useAuth();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
@@ -85,9 +85,6 @@ export function Dashboard() {
           <span className="badge">
             <span className={`dot ${live ? 'ok' : 'err'}`} /> {live ? 'ao vivo' : 'offline'}
           </span>
-          <button className="btn ghost" onClick={() => void logout()}>
-            Sair
-          </button>
         </div>
       </header>
 

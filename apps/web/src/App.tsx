@@ -1,11 +1,12 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './lib/auth';
+import { AppLayout } from './components/AppLayout';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
-import type { ReactNode } from 'react';
+import { Chat } from './pages/Chat';
 
-function Protected({ children }: { children: ReactNode }) {
+function ProtectedLayout() {
   const { status } = useAuth();
   if (status === 'loading') {
     return (
@@ -17,7 +18,7 @@ function Protected({ children }: { children: ReactNode }) {
   if (status === 'unauthenticated') {
     return <Navigate to="/login" replace />;
   }
-  return <>{children}</>;
+  return <AppLayout />;
 }
 
 export function App() {
@@ -25,14 +26,10 @@ export function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route
-        path="/"
-        element={
-          <Protected>
-            <Dashboard />
-          </Protected>
-        }
-      />
+      <Route element={<ProtectedLayout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/chat" element={<Chat />} />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

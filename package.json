@@ -27,6 +27,7 @@
     "db:validate": "prisma validate --schema=packages/database/prisma/schema.prisma",
     "db:studio": "prisma studio --schema=packages/database/prisma/schema.prisma",
     "seed": "npm run seed --workspace @whats-boot/api",
+    "seed:demo": "npm run seed:demo --workspace @whats-boot/api",
     "prepare": "husky || true; npm run db:generate || true"
   },
   "devDependencies": {
