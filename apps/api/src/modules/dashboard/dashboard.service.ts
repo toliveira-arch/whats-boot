@@ -1,19 +1,36 @@
 import { prisma } from '../../lib/prisma';
 
+export interface TrendKpi {
+  value: number;
+  /** Variação % vs período anterior de mesmo tamanho. null = sem base de comparação. */
+  deltaPct: number | null;
+}
+
 export interface DashboardMetrics {
-  conversations: {
-    total: number;
-    open: number;
-    pending: number;
-    resolved: number;
-    unassigned: number;
+  period: { days: number };
+  kpis: {
+    attendedClients: TrendKpi;
+    leadsInProgress: TrendKpi;
+    qualified: TrendKpi;
+    disqualified: TrendKpi;
+    advances: TrendKpi;
+    openConversations: TrendKpi;
   };
-  messages: { total: number; last24h: number; inboundLast24h: number; outboundLast24h: number };
-  contacts: { total: number };
   channels: { total: number; connected: number };
   agents: { total: number; online: number };
-  responseTime: { avgFirstResponseSeconds: number | null };
-  series: { messagesPerDay: { date: string; count: number }[] };
+  messages: { last24h: number };
+  contacts: { total: number };
+  funnel: {
+    newLeads: number;
+    responded: number;
+    inProgress: number;
+    qualified: number;
+    disqualified: number;
+  };
+  conversionRatePct: number;
+  lossReasons: { label: string; count: number; pct: number }[];
+  recentActivity: { id: string; type: string; title: string; subtitle: string; at: string }[];
+  series: { messagesPerDay: { date: string; inbound: number; outbound: number }[] };
   generatedAt: string;
 }
 
@@ -21,107 +38,233 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+/** Variação percentual entre dois períodos (null quando não há base). */
+function delta(cur: number, prev: number): number | null {
+  if (prev === 0) return cur > 0 ? 100 : null;
+  return Math.round(((cur - prev) / prev) * 100);
+}
+
+/** Agrupa os motivos reais do gate SDR em rótulos legíveis. */
+function categorizeReason(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.startsWith('faturamento')) return 'Faturamento abaixo do piso';
+  if (s.includes('decisor')) return 'Não é o decisor';
+  if (s.includes('cnpj')) return 'Sem CNPJ';
+  if (s.includes('ramo')) return 'Ramo fora do perfil';
+  return 'Outros';
+}
+
+/** Conta leads (conversas) por veredito num intervalo, via um único groupBy. */
+async function verdictCounts(
+  gte: Date,
+  lt: Date,
+): Promise<{ inProgress: number; qualified: number; disqualified: number }> {
+  const rows = await prisma.conversation.groupBy({
+    by: ['leadVerdict'],
+    where: { deletedAt: null, createdAt: { gte, lt } },
+    _count: { _all: true },
+  });
+  const out = { inProgress: 0, qualified: 0, disqualified: 0 };
+  for (const r of rows) {
+    const c = r._count._all;
+    if (r.leadVerdict === 'QUALIFIED') out.qualified = c;
+    else if (r.leadVerdict === 'DISQUALIFIED') out.disqualified = c;
+    else if (r.leadVerdict === 'IN_PROGRESS') out.inProgress = c;
+  }
+  return out;
+}
+
+/** Métricas de um intervalo (por data de criação da conversa/lead). */
+async function windowStats(gte: Date, lt: Date) {
+  const [verdicts, attended, responded, open, newLeads] = await Promise.all([
+    verdictCounts(gte, lt),
+    prisma.conversation.findMany({
+      where: { deletedAt: null, createdAt: { gte, lt } },
+      select: { contactId: true },
+      distinct: ['contactId'],
+    }),
+    prisma.conversation.count({
+      where: { deletedAt: null, createdAt: { gte, lt }, firstResponseAt: { not: null } },
+    }),
+    prisma.conversation.count({
+      where: { deletedAt: null, createdAt: { gte, lt }, status: 'OPEN' },
+    }),
+    prisma.conversation.count({ where: { deletedAt: null, createdAt: { gte, lt } } }),
+  ]);
+  return {
+    attendedClients: attended.length,
+    leadsInProgress: verdicts.inProgress,
+    qualified: verdicts.qualified,
+    disqualified: verdicts.disqualified,
+    advances: responded,
+    openConversations: open,
+    newLeads,
+  };
+}
+
 /**
  * Calcula as métricas do dashboard a partir do banco (isoladas por tenant pelo
  * guard do Prisma). Nenhum dado fictício — tudo vem de consultas reais.
- * Deve ser chamado dentro de um contexto de tenant (runWithTenant).
+ * Escopado ao período informado (`days`, padrão 7); os KPIs comparam com o
+ * período imediatamente anterior de mesmo tamanho. Deve ser chamado dentro de
+ * um contexto de tenant (runWithTenant).
  */
-export async function getMetrics(): Promise<DashboardMetrics> {
+export async function getMetrics(days = 7): Promise<DashboardMetrics> {
+  const span = Math.min(Math.max(1, Math.round(days)), 90);
   const now = new Date();
-  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const last24h = new Date(now.getTime() - dayMs);
+  const windowStart = new Date(now.getTime() - span * dayMs);
+  const prevStart = new Date(now.getTime() - 2 * span * dayMs);
 
   const [
-    convTotal,
-    convOpen,
-    convPending,
-    convResolved,
-    convUnassigned,
-    msgTotal,
-    msgLast24h,
-    msgInbound24h,
-    msgOutbound24h,
-    contactsTotal,
+    cur,
+    prev,
     channelsTotal,
     channelsConnected,
     agentsTotal,
     agentsOnline,
-    firstResponses,
+    contactsTotal,
+    msgLast24h,
+    lossRows,
+    recentRows,
   ] = await Promise.all([
-    prisma.conversation.count({ where: { deletedAt: null } }),
-    prisma.conversation.count({ where: { deletedAt: null, status: 'OPEN' } }),
-    prisma.conversation.count({ where: { deletedAt: null, status: 'PENDING' } }),
-    prisma.conversation.count({ where: { deletedAt: null, status: 'RESOLVED' } }),
-    prisma.conversation.count({
-      where: { deletedAt: null, assignedToId: null, status: { in: ['OPEN', 'PENDING'] } },
-    }),
-    prisma.message.count({ where: { deletedAt: null } }),
-    prisma.message.count({ where: { deletedAt: null, createdAt: { gte: last24h } } }),
-    prisma.message.count({
-      where: { deletedAt: null, direction: 'INBOUND', createdAt: { gte: last24h } },
-    }),
-    prisma.message.count({
-      where: { deletedAt: null, direction: 'OUTBOUND', createdAt: { gte: last24h } },
-    }),
-    prisma.contact.count({ where: { deletedAt: null } }),
+    windowStats(windowStart, now),
+    windowStats(prevStart, windowStart),
     prisma.evolutionInstance.count({ where: { deletedAt: null } }),
     prisma.evolutionInstance.count({ where: { deletedAt: null, status: 'CONNECTED' } }),
     prisma.membership.count({ where: { deletedAt: null, status: 'ACTIVE' } }),
     prisma.membership.count({
       where: { deletedAt: null, status: 'ACTIVE', agentProfile: { status: 'AVAILABLE' } },
     }),
+    prisma.contact.count({ where: { deletedAt: null } }),
+    prisma.message.count({ where: { deletedAt: null, createdAt: { gte: last24h } } }),
     prisma.conversation.findMany({
-      where: { firstResponseAt: { not: null }, createdAt: { gte: last30d } },
-      select: { createdAt: true, firstResponseAt: true },
-      take: 1000,
+      where: {
+        deletedAt: null,
+        createdAt: { gte: windowStart, lt: now },
+        leadVerdict: 'DISQUALIFIED',
+      },
+      select: { qualification: true },
+    }),
+    prisma.conversation.findMany({
+      where: { deletedAt: null },
+      orderBy: { updatedAt: 'desc' },
+      take: 6,
+      select: {
+        id: true,
+        status: true,
+        leadVerdict: true,
+        qualification: true,
+        updatedAt: true,
+        contact: { select: { name: true, pushName: true } },
+        company: { select: { name: true } },
+      },
     }),
   ]);
 
-  // Tempo médio até a primeira resposta (segundos).
-  let avgFirstResponseSeconds: number | null = null;
-  if (firstResponses.length > 0) {
-    const totalSec = firstResponses.reduce((acc, c) => {
-      const diff = (c.firstResponseAt!.getTime() - c.createdAt.getTime()) / 1000;
-      return acc + Math.max(0, diff);
-    }, 0);
-    avgFirstResponseSeconds = Math.round(totalSec / firstResponses.length);
+  // Motivo da perda: cada lead desqualificado conta uma vez pelo 1º motivo real.
+  const lossTally = new Map<string, number>();
+  for (const row of lossRows) {
+    const q = row.qualification as { reasons?: unknown } | null;
+    const reasons = Array.isArray(q?.reasons) ? (q!.reasons as unknown[]) : [];
+    const first = reasons.find((r) => typeof r === 'string') as string | undefined;
+    const label = first ? categorizeReason(first) : 'Outros';
+    lossTally.set(label, (lossTally.get(label) ?? 0) + 1);
   }
+  const lossTotal = Array.from(lossTally.values()).reduce((a, b) => a + b, 0);
+  const lossReasons = Array.from(lossTally.entries())
+    .map(([label, count]) => ({
+      label,
+      count,
+      pct: lossTotal ? Math.round((count / lossTotal) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
 
-  // Série de mensagens por dia (últimos 7 dias).
-  const days: { date: string; start: Date; end: Date }[] = [];
+  // Atividade recente: derivada do estado real das conversas mais recentes.
+  const recentActivity = recentRows.map((r) => {
+    const q = r.qualification as { campaignName?: string; reasons?: unknown } | null;
+    const contactName = r.contact?.name ?? r.contact?.pushName ?? 'Contato';
+    const company = r.company?.name ?? '';
+    let type = 'conversation';
+    let title = 'Conversa aberta';
+    let subtitle = contactName;
+    if (r.leadVerdict === 'QUALIFIED') {
+      type = 'qualified';
+      title = 'Novo lead qualificado';
+      subtitle = `${contactName}${q?.campaignName ? ` · ${q.campaignName}` : company ? ` · ${company}` : ''}`;
+    } else if (r.leadVerdict === 'DISQUALIFIED') {
+      type = 'disqualified';
+      title = 'Lead desqualificado';
+      const reasons = Array.isArray(q?.reasons) ? (q!.reasons as unknown[]) : [];
+      const first = reasons.find((x) => typeof x === 'string') as string | undefined;
+      subtitle = `${contactName}${first ? ` · ${categorizeReason(first)}` : ''}`;
+    } else if (r.leadVerdict === 'IN_PROGRESS') {
+      type = 'in_progress';
+      title = 'Lead em atendimento';
+      subtitle = `${contactName}${q?.campaignName ? ` · ${q.campaignName}` : ''}`;
+    }
+    return { id: r.id, type, title, subtitle, at: r.updatedAt.toISOString() };
+  });
+
+  // Série de mensagens (entrada/saída) por dia — últimos 7 dias.
+  const dayDefs: { date: string; start: Date; end: Date }[] = [];
   for (let i = 6; i >= 0; i -= 1) {
-    const start = startOfDay(new Date(now.getTime() - i * 24 * 60 * 60 * 1000));
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-    days.push({ date: start.toISOString().slice(0, 10), start, end });
+    const start = startOfDay(new Date(now.getTime() - i * dayMs));
+    const end = new Date(start.getTime() + dayMs);
+    dayDefs.push({ date: start.toISOString().slice(0, 10), start, end });
   }
-  const perDayCounts = await Promise.all(
-    days.map((d) =>
-      prisma.message.count({
-        where: { deletedAt: null, createdAt: { gte: d.start, lt: d.end } },
-      }),
-    ),
+  const perDay = await Promise.all(
+    dayDefs.map(async (d) => {
+      const [inbound, outbound] = await Promise.all([
+        prisma.message.count({
+          where: {
+            deletedAt: null,
+            direction: 'INBOUND',
+            createdAt: { gte: d.start, lt: d.end },
+          },
+        }),
+        prisma.message.count({
+          where: {
+            deletedAt: null,
+            direction: 'OUTBOUND',
+            createdAt: { gte: d.start, lt: d.end },
+          },
+        }),
+      ]);
+      return { date: d.date, inbound, outbound };
+    }),
   );
-  const messagesPerDay = days.map((d, i) => ({ date: d.date, count: perDayCounts[i] ?? 0 }));
+
+  const conversionRatePct = cur.newLeads ? Math.round((cur.qualified / cur.newLeads) * 100) : 0;
+
+  const kpi = (c: number, p: number): TrendKpi => ({ value: c, deltaPct: delta(c, p) });
 
   return {
-    conversations: {
-      total: convTotal,
-      open: convOpen,
-      pending: convPending,
-      resolved: convResolved,
-      unassigned: convUnassigned,
+    period: { days: span },
+    kpis: {
+      attendedClients: kpi(cur.attendedClients, prev.attendedClients),
+      leadsInProgress: kpi(cur.leadsInProgress, prev.leadsInProgress),
+      qualified: kpi(cur.qualified, prev.qualified),
+      disqualified: kpi(cur.disqualified, prev.disqualified),
+      advances: kpi(cur.advances, prev.advances),
+      openConversations: kpi(cur.openConversations, prev.openConversations),
     },
-    messages: {
-      total: msgTotal,
-      last24h: msgLast24h,
-      inboundLast24h: msgInbound24h,
-      outboundLast24h: msgOutbound24h,
-    },
-    contacts: { total: contactsTotal },
     channels: { total: channelsTotal, connected: channelsConnected },
     agents: { total: agentsTotal, online: agentsOnline },
-    responseTime: { avgFirstResponseSeconds },
-    series: { messagesPerDay },
+    messages: { last24h: msgLast24h },
+    contacts: { total: contactsTotal },
+    funnel: {
+      newLeads: cur.newLeads,
+      responded: cur.advances,
+      inProgress: cur.leadsInProgress,
+      qualified: cur.qualified,
+      disqualified: cur.disqualified,
+    },
+    conversionRatePct,
+    lossReasons,
+    recentActivity,
+    series: { messagesPerDay: perDay },
     generatedAt: now.toISOString(),
   };
 }

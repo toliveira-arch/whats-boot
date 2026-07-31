@@ -1,17 +1,33 @@
+export interface TrendKpi {
+  value: number;
+  deltaPct: number | null;
+}
+
 export interface DashboardMetrics {
-  conversations: {
-    total: number;
-    open: number;
-    pending: number;
-    resolved: number;
-    unassigned: number;
+  period: { days: number };
+  kpis: {
+    attendedClients: TrendKpi;
+    leadsInProgress: TrendKpi;
+    qualified: TrendKpi;
+    disqualified: TrendKpi;
+    advances: TrendKpi;
+    openConversations: TrendKpi;
   };
-  messages: { total: number; last24h: number; inboundLast24h: number; outboundLast24h: number };
-  contacts: { total: number };
   channels: { total: number; connected: number };
   agents: { total: number; online: number };
-  responseTime: { avgFirstResponseSeconds: number | null };
-  series: { messagesPerDay: { date: string; count: number }[] };
+  messages: { last24h: number };
+  contacts: { total: number };
+  funnel: {
+    newLeads: number;
+    responded: number;
+    inProgress: number;
+    qualified: number;
+    disqualified: number;
+  };
+  conversionRatePct: number;
+  lossReasons: { label: string; count: number; pct: number }[];
+  recentActivity: { id: string; type: string; title: string; subtitle: string; at: string }[];
+  series: { messagesPerDay: { date: string; inbound: number; outbound: number }[] };
   generatedAt: string;
 }
 

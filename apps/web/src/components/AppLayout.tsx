@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { Logo } from './Logo';
 
 export function AppLayout() {
   const { profile, logout } = useAuth();
@@ -9,7 +10,9 @@ export function AppLayout() {
   return (
     <div className="app-shell">
       <nav className="app-nav">
-        <span className="brand">whats-boot</span>
+        <span className="brand">
+          <Logo height={26} />
+        </span>
         <NavLink to="/" end className={linkClass}>
           Dashboard
         </NavLink>
@@ -32,7 +35,7 @@ export function AppLayout() {
           Integrações
         </NavLink>
         <span className="nav-spacer" />
-        <span className="sub">{profile?.user.name}</span>
+        <span className="sub nav-user">{profile?.role.name ?? profile?.user.name}</span>
         <button className="btn ghost" onClick={() => void logout()}>
           Sair
         </button>

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { ApiError } from '../lib/api';
+import { Logo } from '../components/Logo';
 
 export function Login() {
   const { login } = useAuth();
@@ -28,7 +29,9 @@ export function Login() {
   return (
     <div className="auth-wrap">
       <form className="auth-card" onSubmit={onSubmit}>
-        <h1>whats-boot</h1>
+        <div className="auth-brand">
+          <Logo height={40} />
+        </div>
         <p className="sub">Entre para acessar o painel</p>
 
         <label className="field">

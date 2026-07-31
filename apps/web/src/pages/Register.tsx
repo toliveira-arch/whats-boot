@@ -31,7 +31,7 @@ export function Register() {
     <div className="auth-wrap">
       <form className="auth-card" onSubmit={onSubmit}>
         <h1>Criar conta</h1>
-        <p className="sub">Comece a usar o whats-boot</p>
+        <p className="sub">Comece a usar o ZAPmoon</p>
 
         <label className="field">
           <span>Seu nome</span>
