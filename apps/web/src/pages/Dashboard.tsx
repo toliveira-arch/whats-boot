@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { authFetch, ApiError } from '../lib/api';
 import { getSocket } from '../lib/socket';
+import { listCompanies, type Company } from '../lib/companies';
 import type { DashboardMetrics, TrendKpi } from '../lib/types';
 
 /* ------------------------------------------------------------------ ícones */
@@ -196,13 +197,24 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [days, setDays] = useState(7);
+  const [companyId, setCompanyId] = useState('');
+  const [companies, setCompanies] = useState<Company[]>([]);
   const daysRef = useRef(days);
   daysRef.current = days;
+  const companyRef = useRef(companyId);
+  companyRef.current = companyId;
+
+  useEffect(() => {
+    listCompanies()
+      .then(setCompanies)
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     let active = true;
     setMetrics(null);
-    authFetch<DashboardMetrics>(`/dashboard/metrics?days=${days}`)
+    const q = companyId ? `&companyId=${encodeURIComponent(companyId)}` : '';
+    authFetch<DashboardMetrics>(`/dashboard/metrics?days=${days}${q}`)
       .then((m) => active && setMetrics(m))
       .catch(
         (err) => active && setError(err instanceof ApiError ? err.message : 'Erro ao carregar'),
@@ -210,15 +222,15 @@ export function Dashboard() {
     return () => {
       active = false;
     };
-  }, [days]);
+  }, [days, companyId]);
 
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
     const onMetrics = (m: DashboardMetrics) => {
-      // Só aplica atualizações ao vivo na visão padrão (7 dias); outros períodos
-      // são carregados sob demanda via HTTP para não sobrescrever a seleção.
-      if (daysRef.current === 7) setMetrics(m);
+      // Só aplica atualizações ao vivo na visão padrão (7 dias, todas as empresas);
+      // filtros específicos são carregados sob demanda via HTTP.
+      if (daysRef.current === 7 && companyRef.current === '') setMetrics(m);
     };
     const onConnect = () => setLive(true);
     const onDisconnect = () => setLive(false);
@@ -251,6 +263,19 @@ export function Dashboard() {
           <span className={`dv-live ${live ? 'on' : 'off'}`}>
             <span className="dot" /> {live ? 'ao vivo' : 'offline'}
           </span>
+          <select
+            className="dv-period"
+            value={companyId}
+            onChange={(e) => setCompanyId(e.target.value)}
+            title="Filtrar por empresa"
+          >
+            <option value="">Todas as empresas</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
           <select
             className="dv-period"
             value={days}

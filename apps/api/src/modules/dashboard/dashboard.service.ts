@@ -54,14 +54,20 @@ function categorizeReason(raw: string): string {
   return 'Outros';
 }
 
+/** Filtro por empresa (cliente): aplicado quando um companyId é informado. */
+function companyFilter(companyId?: string | null): { companyId?: string } {
+  return companyId ? { companyId } : {};
+}
+
 /** Conta leads (conversas) por veredito num intervalo, via um único groupBy. */
 async function verdictCounts(
   gte: Date,
   lt: Date,
+  companyId?: string | null,
 ): Promise<{ inProgress: number; qualified: number; disqualified: number }> {
   const rows = await prisma.conversation.groupBy({
     by: ['leadVerdict'],
-    where: { deletedAt: null, createdAt: { gte, lt } },
+    where: { deletedAt: null, createdAt: { gte, lt }, ...companyFilter(companyId) },
     _count: { _all: true },
   });
   const out = { inProgress: 0, qualified: 0, disqualified: 0 };
@@ -75,21 +81,22 @@ async function verdictCounts(
 }
 
 /** Métricas de um intervalo (por data de criação da conversa/lead). */
-async function windowStats(gte: Date, lt: Date) {
+async function windowStats(gte: Date, lt: Date, companyId?: string | null) {
+  const cf = companyFilter(companyId);
   const [verdicts, attended, responded, open, newLeads] = await Promise.all([
-    verdictCounts(gte, lt),
+    verdictCounts(gte, lt, companyId),
     prisma.conversation.findMany({
-      where: { deletedAt: null, createdAt: { gte, lt } },
+      where: { deletedAt: null, createdAt: { gte, lt }, ...cf },
       select: { contactId: true },
       distinct: ['contactId'],
     }),
     prisma.conversation.count({
-      where: { deletedAt: null, createdAt: { gte, lt }, firstResponseAt: { not: null } },
+      where: { deletedAt: null, createdAt: { gte, lt }, firstResponseAt: { not: null }, ...cf },
     }),
     prisma.conversation.count({
-      where: { deletedAt: null, createdAt: { gte, lt }, status: 'OPEN' },
+      where: { deletedAt: null, createdAt: { gte, lt }, status: 'OPEN', ...cf },
     }),
-    prisma.conversation.count({ where: { deletedAt: null, createdAt: { gte, lt } } }),
+    prisma.conversation.count({ where: { deletedAt: null, createdAt: { gte, lt }, ...cf } }),
   ]);
   return {
     attendedClients: attended.length,
@@ -109,13 +116,14 @@ async function windowStats(gte: Date, lt: Date) {
  * período imediatamente anterior de mesmo tamanho. Deve ser chamado dentro de
  * um contexto de tenant (runWithTenant).
  */
-export async function getMetrics(days = 7): Promise<DashboardMetrics> {
+export async function getMetrics(days = 7, companyId?: string | null): Promise<DashboardMetrics> {
   const span = Math.min(Math.max(1, Math.round(days)), 90);
   const now = new Date();
   const dayMs = 24 * 60 * 60 * 1000;
   const last24h = new Date(now.getTime() - dayMs);
   const windowStart = new Date(now.getTime() - span * dayMs);
   const prevStart = new Date(now.getTime() - 2 * span * dayMs);
+  const cf = companyFilter(companyId);
 
   const [
     cur,
@@ -129,26 +137,28 @@ export async function getMetrics(days = 7): Promise<DashboardMetrics> {
     lossRows,
     recentRows,
   ] = await Promise.all([
-    windowStats(windowStart, now),
-    windowStats(prevStart, windowStart),
-    prisma.evolutionInstance.count({ where: { deletedAt: null } }),
-    prisma.evolutionInstance.count({ where: { deletedAt: null, status: 'CONNECTED' } }),
+    windowStats(windowStart, now, companyId),
+    windowStats(prevStart, windowStart, companyId),
+    prisma.evolutionInstance.count({ where: { deletedAt: null, ...cf } }),
+    prisma.evolutionInstance.count({ where: { deletedAt: null, status: 'CONNECTED', ...cf } }),
+    // Atendentes são do tenant (não são por empresa), então não filtram por empresa.
     prisma.membership.count({ where: { deletedAt: null, status: 'ACTIVE' } }),
     prisma.membership.count({
       where: { deletedAt: null, status: 'ACTIVE', agentProfile: { status: 'AVAILABLE' } },
     }),
-    prisma.contact.count({ where: { deletedAt: null } }),
-    prisma.message.count({ where: { deletedAt: null, createdAt: { gte: last24h } } }),
+    prisma.contact.count({ where: { deletedAt: null, ...cf } }),
+    prisma.message.count({ where: { deletedAt: null, createdAt: { gte: last24h }, ...cf } }),
     prisma.conversation.findMany({
       where: {
         deletedAt: null,
         createdAt: { gte: windowStart, lt: now },
         leadVerdict: 'DISQUALIFIED',
+        ...cf,
       },
       select: { qualification: true },
     }),
     prisma.conversation.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...cf },
       orderBy: { updatedAt: 'desc' },
       take: 6,
       select: {
@@ -222,6 +232,7 @@ export async function getMetrics(days = 7): Promise<DashboardMetrics> {
             deletedAt: null,
             direction: 'INBOUND',
             createdAt: { gte: d.start, lt: d.end },
+            ...cf,
           },
         }),
         prisma.message.count({
@@ -229,6 +240,7 @@ export async function getMetrics(days = 7): Promise<DashboardMetrics> {
             deletedAt: null,
             direction: 'OUTBOUND',
             createdAt: { gte: d.start, lt: d.end },
+            ...cf,
           },
         }),
       ]);
