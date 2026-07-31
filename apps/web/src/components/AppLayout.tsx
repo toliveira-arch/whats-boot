@@ -34,6 +34,9 @@ export function AppLayout() {
         <NavLink to="/integrations" className={linkClass}>
           Integrações
         </NavLink>
+        <NavLink to="/warmup" className={linkClass}>
+          Aquecimento
+        </NavLink>
         <span className="nav-spacer" />
         <span className="sub nav-user">{profile?.role.name ?? profile?.user.name}</span>
         <button className="btn ghost" onClick={() => void logout()}>

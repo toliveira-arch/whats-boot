@@ -335,6 +335,8 @@ model Tenant {
   conversationTags    ConversationTag[]
   rdIntegrations      RdIntegration[]
   rdLeadEvents        RdLeadEvent[]
+  warmupSessions      WarmupSession[]
+  warmupAssets        WarmupAsset[]
 
   @@index([status])
   @@index([deletedAt])
@@ -353,6 +355,46 @@ model RdIntegration {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+/// Sessão de aquecimento de chip: dois canais conversam entre si (fluxo
+/// programado por janelas de dia/horário) para simular atividade humana.
+model WarmupSession {
+  id         String    @id @default(cuid())
+  tenantId   String
+  companyId  String
+  name       String
+  channelAId String // EvolutionInstance A
+  channelBId String // EvolutionInstance B
+  status     String    @default("PAUSED") // RUNNING | PAUSED
+  config     Json? // janelas, intervalos, %imagem/apagar/reagir, ramp-up, personas
+  lastBeatAt DateTime? // último envio (para espaçar os intervalos)
+  beatsToday Int       @default(0) // mensagens enviadas hoje (ramp-up / limite)
+  beatsDate  String? // yyyy-mm-dd de referência do contador diário
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([companyId])
+}
+
+/// Imagem da galeria usada no aquecimento (armazenada em base64 no MVP).
+model WarmupAsset {
+  id         String    @id @default(cuid())
+  tenantId   String
+  companyId  String?
+  name       String?
+  mimeType   String    @default("image/jpeg")
+  dataBase64 String // conteúdo da imagem em base64 (sem o prefixo data:)
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

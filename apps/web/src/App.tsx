@@ -10,6 +10,7 @@ import { Companies } from './pages/Companies';
 import { Monitor } from './pages/Monitor';
 import { AiSettings } from './pages/AiSettings';
 import { Integrations } from './pages/Integrations';
+import { Warmup } from './pages/Warmup';
 
 function ProtectedLayout() {
   const { status } = useAuth();
@@ -39,6 +40,7 @@ export function App() {
         <Route path="/monitor" element={<Monitor />} />
         <Route path="/ai" element={<AiSettings />} />
         <Route path="/integrations" element={<Integrations />} />
+        <Route path="/warmup" element={<Warmup />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

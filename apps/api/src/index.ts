@@ -7,6 +7,7 @@ import { redis } from './lib/redis';
 import { prisma } from './lib/prisma';
 import { closeQueues } from './queues';
 import { resyncAllWebhooks } from './modules/evolution/channels.service';
+import { startWarmupScheduler, stopWarmupScheduler } from './modules/warmup/warmup.engine';
 
 async function bootstrap(): Promise<void> {
   const app = createApp();
@@ -31,11 +32,14 @@ async function bootstrap(): Promise<void> {
     void resyncAllWebhooks().catch((err) =>
       logger.warn({ err }, 'falha ao re-sincronizar webhooks no boot'),
     );
+    // Agendador de aquecimento de chip (ticker em processo, sem Redis).
+    startWarmupScheduler();
   });
 
   // Encerramento gracioso
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'encerrando...');
+    stopWarmupScheduler();
     io.close();
     httpServer.close();
     await closeQueues().catch(() => undefined);

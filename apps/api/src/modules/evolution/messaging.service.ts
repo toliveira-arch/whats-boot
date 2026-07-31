@@ -161,7 +161,7 @@ export async function sendText(input: SendTextInput) {
 
 export interface SendMediaInput {
   tenantId: string;
-  membershipId: string;
+  membershipId?: string;
   channelId: string;
   number: string;
   mediatype: MediaType;
@@ -169,6 +169,7 @@ export interface SendMediaInput {
   mimetype?: string;
   fileName?: string;
   caption?: string;
+  authorType?: 'AGENT' | 'AI';
 }
 
 export async function sendMedia(input: SendMediaInput) {
@@ -184,8 +185,8 @@ export async function sendMedia(input: SendMediaInput) {
       contactId: contact.id,
       evolutionInstanceId: channel.id,
       direction: 'OUTBOUND',
-      authorType: 'AGENT',
-      authorMembershipId: input.membershipId,
+      authorType: input.authorType ?? 'AGENT',
+      authorMembershipId: input.membershipId ?? null,
       type: mediaToMessageType(input.mediatype),
       content: input.caption ?? null,
       caption: input.caption ?? null,
@@ -224,6 +225,69 @@ export async function sendMedia(input: SendMediaInput) {
   });
 
   return { messageId: message.id, conversationId: conversation.id };
+}
+
+// ---------------------------------------------------------------------------
+// Ações auxiliares (presença, apagar, reagir) — usadas pelo aquecimento.
+// Sempre best-effort: nunca lançam.
+// ---------------------------------------------------------------------------
+
+async function clientFor(channelId: string) {
+  const ch = await prisma.evolutionInstance.findFirst({
+    where: { id: channelId, deletedAt: null },
+    select: { instanceName: true, baseUrl: true, apiKeyEncrypted: true },
+  });
+  if (!ch) return null;
+  return {
+    client: createEvolutionClient(ch.baseUrl, decryptSecret(ch.apiKeyEncrypted)),
+    instanceName: ch.instanceName,
+  };
+}
+
+/** Mostra "digitando…" (ou "gravando…") para o número, por `delay` ms. */
+export async function sendPresence(
+  channelId: string,
+  number: string,
+  presence: 'composing' | 'recording' | 'available' = 'composing',
+  delay = 1500,
+): Promise<void> {
+  try {
+    const c = await clientFor(channelId);
+    if (!c) return;
+    const { sendNumber } = normalizeNumber(number);
+    await c.client.sendPresence(c.instanceName, { number: sendNumber, presence, delay });
+  } catch (err) {
+    logger.warn({ err, channelId }, 'falha ao enviar presença');
+  }
+}
+
+/** Apaga uma mensagem para todos (best-effort). */
+export async function deleteForEveryone(
+  channelId: string,
+  key: { id: string; remoteJid: string; fromMe: boolean },
+): Promise<void> {
+  try {
+    const c = await clientFor(channelId);
+    if (!c) return;
+    await c.client.deleteForEveryone(c.instanceName, key);
+  } catch (err) {
+    logger.warn({ err, channelId }, 'falha ao apagar mensagem para todos');
+  }
+}
+
+/** Reage a uma mensagem com um emoji (best-effort). */
+export async function sendReaction(
+  channelId: string,
+  key: { id: string; remoteJid: string; fromMe: boolean },
+  reaction: string,
+): Promise<void> {
+  try {
+    const c = await clientFor(channelId);
+    if (!c) return;
+    await c.client.sendReaction(c.instanceName, { key, reaction });
+  } catch (err) {
+    logger.warn({ err, channelId }, 'falha ao reagir à mensagem');
+  }
 }
 
 /** Processa o envio (executado pelo worker): chama a Evolution e atualiza o status. */

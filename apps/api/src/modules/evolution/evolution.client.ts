@@ -126,6 +126,14 @@ export function createEvolutionClient(baseUrl: string, apikey: string) {
       request('POST', baseUrl, `/chat/markMessageAsRead/${instance}`, apikey, { readMessages }),
     sendPresence: (instance: string, body: { number: string; presence: string; delay?: number }) =>
       request('POST', baseUrl, `/chat/sendPresence/${instance}`, apikey, body),
+    deleteForEveryone: (
+      instance: string,
+      key: { id: string; remoteJid: string; fromMe: boolean; participant?: string },
+    ) => request('DELETE', baseUrl, `/chat/deleteMessageForEveryone/${instance}`, apikey, key),
+    sendReaction: (
+      instance: string,
+      body: { key: { id: string; remoteJid: string; fromMe: boolean }; reaction: string },
+    ) => request('POST', baseUrl, `/message/sendReaction/${instance}`, apikey, body),
   };
 }
 

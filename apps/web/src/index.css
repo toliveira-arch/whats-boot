@@ -749,6 +749,95 @@ h2 {
   color: var(--text);
 }
 
+/* ===================== Aquecimento de chip ===================== */
+.wu-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.wu-thumb {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.wu-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.wu-thumb .btn.danger {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  padding: 0 7px;
+  line-height: 1.6;
+}
+.wu-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wu-windows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.wu-window {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wu-days {
+  display: flex;
+  gap: 4px;
+}
+.wu-day {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wu-day.on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.wu-window input[type='time'] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--text);
+}
+.wu-details {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.wu-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+.wu-config {
+  margin-top: 12px;
+}
+.wu-config h4 {
+  margin: 6px 0;
+  font-size: 13px;
+}
+
 /* ===================== Configurações de IA ===================== */
 .settings {
   max-width: 840px;
