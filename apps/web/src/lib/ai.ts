@@ -31,7 +31,23 @@ export interface QualConfig {
   defaultDisqualifyMessage: string;
   defaultHandoffMessage: string;
   campaigns: QualCampaign[];
+  notifyCloser?: boolean;
+  closerTemplate?: string;
 }
+
+export const DEFAULT_CLOSER_TEMPLATE = [
+  '🔔 *Novo lead QUALIFICADO!*',
+  '',
+  '👤 {{nome}}',
+  '📱 {{telefone}}',
+  '🏢 Ramo: {{ramo}}',
+  '💰 Faturamento: {{faturamento}}',
+  '🎯 Interesse: {{interesse}} · Urgência: {{urgencia}}',
+  '',
+  '📝 Cenário: {{resumo}}',
+  '',
+  'Fale com o lead o quanto antes! 🚀',
+].join('\n');
 
 export interface AiAgent {
   id: string;
@@ -96,6 +112,8 @@ export function emptyQualConfig(): QualConfig {
     defaultHandoffMessage:
       'Perfeito! Pelo que conversamos, faz total sentido você falar com um dos nossos especialistas. Já vou te encaminhar para o time, tudo bem?',
     campaigns: [],
+    notifyCloser: true,
+    closerTemplate: DEFAULT_CLOSER_TEMPLATE,
   };
 }
 

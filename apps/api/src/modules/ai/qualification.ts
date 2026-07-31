@@ -35,7 +35,25 @@ export interface QualConfig {
   defaultDisqualifyMessage: string;
   defaultHandoffMessage: string;
   campaigns: QualCampaign[];
+  // Notificação do closer (comercial da empresa) quando o lead é MQL.
+  notifyCloser?: boolean;
+  closerTemplate?: string;
 }
+
+/** Modelo padrão da notificação enviada ao closer sobre um lead qualificado. */
+export const DEFAULT_CLOSER_TEMPLATE = [
+  '🔔 *Novo lead QUALIFICADO!*',
+  '',
+  '👤 {{nome}}',
+  '📱 {{telefone}}',
+  '🏢 Ramo: {{ramo}}',
+  '💰 Faturamento: {{faturamento}}',
+  '🎯 Interesse: {{interesse}} · Urgência: {{urgencia}}',
+  '',
+  '📝 Cenário: {{resumo}}',
+  '',
+  'Fale com o lead o quanto antes! 🚀',
+].join('\n');
 
 /** Saída estruturada esperada do modelo (JSON). */
 export interface QualLlmOutput {

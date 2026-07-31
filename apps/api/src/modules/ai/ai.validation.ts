@@ -38,6 +38,8 @@ const qualification = z
     defaultDisqualifyMessage: z.string().max(2000).default(''),
     defaultHandoffMessage: z.string().max(2000).default(''),
     campaigns: z.array(qualCampaign).default([]),
+    notifyCloser: z.boolean().optional(),
+    closerTemplate: z.string().max(2000).optional(),
   })
   .optional();
 

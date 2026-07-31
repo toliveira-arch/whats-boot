@@ -172,6 +172,30 @@ export function QualificationEditor({ value, onChange }: Props) {
             />
           </label>
 
+          <h3>Notificar o closer (lead qualificado)</h3>
+          <label className="ai-toggle">
+            <input
+              type="checkbox"
+              checked={value.notifyCloser ?? false}
+              onChange={(e) => set('notifyCloser', e.target.checked)}
+            />
+            <span>Avisar o closer da empresa no WhatsApp quando o lead for MQL</span>
+          </label>
+          <label className="field">
+            <span>
+              Mensagem para o closer — variáveis: {'{{nome}} {{telefone}} {{ramo}}'}{' '}
+              {'{{faturamento}} {{interesse}} {{urgencia}} {{resumo}} {{empresa}} {{closer}}'}
+            </span>
+            <textarea
+              rows={8}
+              value={value.closerTemplate ?? ''}
+              onChange={(e) => set('closerTemplate', e.target.value)}
+            />
+          </label>
+          <p className="sub small">
+            O WhatsApp do closer é configurado por empresa no menu <strong>Empresas</strong>.
+          </p>
+
           <h3>Roteiro padrão</h3>
           <ScriptEditor script={value.defaultScript} onChange={(s) => set('defaultScript', s)} />
 

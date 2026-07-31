@@ -6,6 +6,7 @@ import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
 import { Chat } from './pages/Chat';
 import { Channels } from './pages/Channels';
+import { Companies } from './pages/Companies';
 import { Monitor } from './pages/Monitor';
 import { AiSettings } from './pages/AiSettings';
 import { Integrations } from './pages/Integrations';
@@ -32,6 +33,7 @@ export function App() {
       <Route path="/register" element={<Register />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/companies" element={<Companies />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/channels" element={<Channels />} />
         <Route path="/monitor" element={<Monitor />} />

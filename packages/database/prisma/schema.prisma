@@ -646,6 +646,8 @@ model Company {
   document   String? // CNPJ
   email      String?       @db.Citext
   phone      String?
+  closerName  String? // responsável comercial (closer) que recebe leads MQL
+  closerPhone String? // WhatsApp do closer (com DDI, ex: 5511999998888)
   timezone   String        @default("America/Sao_Paulo")
   status     CompanyStatus @default(ACTIVE)
   logoFileId String?

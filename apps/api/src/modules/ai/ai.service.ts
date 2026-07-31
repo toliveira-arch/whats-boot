@@ -11,10 +11,26 @@ import {
   evaluateGate,
   isComplete,
   resolveCampaign,
+  DEFAULT_CLOSER_TEMPLATE,
   type QualConfig,
   type QualLlmOutput,
   type LeadVerdict,
 } from './qualification';
+
+/** Renderiza um template com {{variaveis}}. */
+function renderTemplate(tpl: string, ctx: Record<string, string>): string {
+  return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => ctx[k] ?? '—');
+}
+
+/** Normaliza telefone BR (só dígitos, com DDI 55). */
+function normalizeBrPhone(raw: unknown): string | null {
+  if (!raw) return null;
+  const d = String(raw).replace(/\D/g, '');
+  if (!d) return null;
+  if (d.startsWith('55') && d.length >= 12) return d;
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  return d;
+}
 
 function tenantId(): string {
   const id = getTenantContext()?.tenantId;
@@ -190,7 +206,7 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   const conversation = await prisma.conversation.findFirst({
     where: { id: conversationId, deletedAt: null },
     include: {
-      contact: { select: { waJid: true, phoneNumber: true } },
+      contact: { select: { name: true, pushName: true, waJid: true, phoneNumber: true } },
       evolutionInstance: { select: { aiEnabled: true } },
     },
   });
@@ -343,8 +359,14 @@ async function runQualification(input: {
   tid: string;
   conversation: {
     id: string;
+    companyId: string;
     evolutionInstanceId: string;
-    contact: { waJid: string | null; phoneNumber: string | null };
+    contact: {
+      name: string | null;
+      pushName: string | null;
+      waJid: string | null;
+      phoneNumber: string | null;
+    };
     qualification: unknown;
   };
   agent: AgentRecord;
@@ -504,6 +526,11 @@ async function runQualification(input: {
   });
   broadcastToTenant(tid, 'lead.updated', { conversationId, verdict, qualification: qualState });
 
+  // Notifica o closer da empresa quando o lead é qualificado (MQL).
+  if (verdict === 'QUALIFIED' && config.notifyCloser) {
+    await notifyCloser({ tid, conversation, config, collected: mergedCollected, out, qualState });
+  }
+
   if (!outboundText) return { skipped: 'empty', verdict };
 
   const min = Math.max(0, agent.minResponseSeconds);
@@ -524,6 +551,69 @@ async function runQualification(input: {
 
   broadcastToTenant(tid, 'ai.suggestion', { conversationId, content: outboundText });
   return { mode: 'COPILOT', content: outboundText, verdict };
+}
+
+/** Dispara a notificação do lead qualificado para o closer da empresa. */
+async function notifyCloser(input: {
+  tid: string;
+  conversation: {
+    companyId: string;
+    evolutionInstanceId: string;
+    contact: {
+      name: string | null;
+      pushName: string | null;
+      waJid: string | null;
+      phoneNumber: string | null;
+    };
+  };
+  config: QualConfig;
+  collected: Record<string, unknown>;
+  out: QualLlmOutput;
+  qualState: { campaignName: string | null; summary: string | null };
+}): Promise<void> {
+  const { tid, conversation, config, collected, out, qualState } = input;
+  try {
+    const company = await prisma.company.findFirst({
+      where: { id: conversation.companyId, deletedAt: null },
+      select: { name: true, closerName: true, closerPhone: true },
+    });
+    const closerPhone = normalizeBrPhone(company?.closerPhone);
+    if (!closerPhone) return; // empresa sem closer configurado
+
+    const leadPhone = (
+      conversation.contact.waJid ??
+      conversation.contact.phoneNumber ??
+      ''
+    ).replace(/\D/g, '');
+    const val = (v: unknown) => (v === undefined || v === null || v === '' ? '—' : String(v));
+    const template = config.closerTemplate?.trim() || DEFAULT_CLOSER_TEMPLATE;
+    const text = renderTemplate(template, {
+      nome: val(collected.nome ?? conversation.contact.name ?? conversation.contact.pushName),
+      telefone: leadPhone || '—',
+      empresa: val(company?.name),
+      faturamento: val(collected.faturamento),
+      ramo: val(collected.ramo ?? collected.segmento),
+      cnpj: val(collected.cnpj),
+      decisor: val(collected.decisor),
+      dor: val(collected.dor),
+      resumo: val(out.summary ?? qualState.summary),
+      campanha: val(qualState.campaignName),
+      interesse: val(out.interest),
+      urgencia: val(out.urgency),
+      closer: val(company?.closerName),
+    });
+
+    await messaging.sendText({
+      tenantId: tid,
+      channelId: conversation.evolutionInstanceId,
+      number: closerPhone,
+      text,
+      authorType: 'AI',
+    });
+    logger.info({ companyId: conversation.companyId }, 'closer notificado sobre lead MQL');
+  } catch (err) {
+    logger.error({ err }, 'falha ao notificar o closer');
+  }
 }
 
 /** Processa um job da fila ai.process dentro do contexto de tenant. */
