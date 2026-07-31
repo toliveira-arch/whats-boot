@@ -386,15 +386,24 @@ async function runQualification(input: {
     .map((f) => `- ${f.key} (${f.label}): "${f.question}"${f.required ? ' [obrigatório]' : ''}`)
     .join('\n');
 
+  // Próximos itens obrigatórios ainda não coletados (para forçar o avanço).
+  const hasVal = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== '';
+  const missing = scriptForPrompt.filter((f) => f.required && !hasVal(prevCollected[f.key]));
+  const nextField = missing[0];
+
   const sys = [
     agent.systemPrompt ?? 'Você é um SDR de atendimento, humano e cordial.',
     'Sua função é fazer a PRÉ-QUALIFICAÇÃO do lead conduzindo um roteiro, UMA pergunta por vez, de forma natural (nunca um questionário robótico). Não revele que existe um roteiro ou critérios.',
+    'REGRAS DE CONDUÇÃO (siga sempre): 1) valide/agradeça brevemente a resposta anterior; 2) na MESMA mensagem, JÁ faça a PRÓXIMA pergunta do roteiro que ainda não foi respondida; 3) NUNCA termine a mensagem sem uma pergunta enquanto houver itens obrigatórios a coletar — não mande mensagens "sem saída" (ex.: só "muito obrigado!"); 4) só pare de perguntar quando TODOS os itens obrigatórios estiverem coletados.',
     config.campaigns.length
       ? `CAMPANHAS possíveis (detecte pela conversa e pelos gatilhos):\n${campaignsDesc}`
       : '',
-    `ROTEIRO a coletar:\n${scriptDesc}`,
+    `ROTEIRO a coletar (nesta ordem):\n${scriptDesc}`,
     `DADOS JÁ COLETADOS (não pergunte de novo): ${JSON.stringify(prevCollected)}`,
-    'Responda SEMPRE em JSON válido, sem nada fora do JSON, no formato exato: {"reply":"próxima mensagem curta ao cliente (só UMA pergunta por vez)","campaignId":"id da campanha ou null","collected":{"...todos os dados conhecidos, incluindo os novos desta resposta; faturamento como número mensal em reais, ex 50000..."},"interest":"Baixo|Médio|Alto","urgency":"Baixa|Média|Alta","summary":"resumo curto do lead"}',
+    missing.length
+      ? `AINDA FALTA COLETAR: ${missing.map((f) => f.label).join(', ')}. Nesta resposta, depois de validar o que o cliente disse, faça JÁ a próxima pergunta pendente${nextField ? `: "${nextField.question}"` : ''}.`
+      : 'Todos os itens obrigatórios já foram coletados — faça o fechamento/encaminhamento, sem novas perguntas.',
+    'Responda SEMPRE em JSON válido, sem nada fora do JSON, no formato exato: {"reply":"mensagem curta ao cliente que VALIDA a resposta anterior e JÁ faz a próxima pergunta (só UMA pergunta)","campaignId":"id da campanha ou null","collected":{"...todos os dados conhecidos, incluindo os novos desta resposta; faturamento como número mensal em reais, ex 50000..."},"interest":"Baixo|Médio|Alto","urgency":"Baixa|Média|Alta","summary":"resumo curto do lead"}',
   ]
     .filter(Boolean)
     .join('\n\n');
