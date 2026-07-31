@@ -361,15 +361,16 @@ model RdIntegration {
   @@index([tenantId])
 }
 
-/// Sessão de aquecimento de chip: dois canais conversam entre si (fluxo
-/// programado por janelas de dia/horário) para simular atividade humana.
+/// Sessão de aquecimento de chip: um pool de canais conversa entre si (pares
+/// sorteados) em janelas programadas, para simular atividade humana.
 model WarmupSession {
   id         String    @id @default(cuid())
   tenantId   String
   companyId  String
   name       String
-  channelAId String // EvolutionInstance A
-  channelBId String // EvolutionInstance B
+  channelIds String[]  @default([]) // pool de EvolutionInstance (2+); pares são sorteados
+  channelAId String? // legado (par simples) — mantido por compatibilidade
+  channelBId String? // legado (par simples)
   status     String    @default("PAUSED") // RUNNING | PAUSED
   config     Json? // janelas, intervalos, %imagem/apagar/reagir, ramp-up, personas
   lastBeatAt DateTime? // último envio (para espaçar os intervalos)

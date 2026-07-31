@@ -20,18 +20,23 @@ export interface WarmupConfig {
   personaA?: string;
   personaB?: string;
   phrases?: string[];
+  veteranIds?: string[];
+}
+
+export interface WarmupChannel {
+  id: string;
+  name: string;
+  connected: boolean;
+  phoneNumber: string | null;
+  veteran: boolean;
 }
 
 export interface WarmupSession {
   id: string;
   companyId: string;
   name: string;
-  channelAId: string;
-  channelBId: string;
-  channelAName: string;
-  channelBName: string;
-  channelAConnected: boolean;
-  channelBConnected: boolean;
+  channelIds: string[];
+  channels: WarmupChannel[];
   status: 'RUNNING' | 'PAUSED';
   config: WarmupConfig;
   lastBeatAt: string | null;
@@ -58,8 +63,7 @@ export function listSessions(companyId?: string | null): Promise<WarmupSession[]
 export function createSession(input: {
   companyId: string;
   name?: string;
-  channelAId: string;
-  channelBId: string;
+  channelIds: string[];
   config?: Partial<WarmupConfig>;
 }): Promise<WarmupSession> {
   return authFetch('/warmup/sessions', { method: 'POST', body: JSON.stringify(input) });
@@ -69,8 +73,7 @@ export function updateSession(
   id: string,
   patch: Partial<{
     name: string;
-    channelAId: string;
-    channelBId: string;
+    channelIds: string[];
     config: Partial<WarmupConfig>;
   }>,
 ): Promise<WarmupSession> {

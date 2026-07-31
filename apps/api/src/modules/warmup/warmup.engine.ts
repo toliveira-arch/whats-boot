@@ -28,6 +28,8 @@ export interface WarmupConfig {
   personaA?: string;
   personaB?: string;
   phrases?: string[];
+  /** Canais já aquecidos: têm prioridade para iniciar a conversa (puxam os novos). */
+  veteranIds?: string[];
 }
 
 export function defaultWarmupConfig(): WarmupConfig {
@@ -80,6 +82,7 @@ export function parseConfig(raw: unknown): WarmupConfig {
     personaA: c.personaA ?? d.personaA,
     personaB: c.personaB ?? d.personaB,
     phrases: Array.isArray(c.phrases) && c.phrases.length ? c.phrases : d.phrases,
+    veteranIds: Array.isArray(c.veteranIds) ? c.veteranIds : [],
   };
 }
 
@@ -251,37 +254,71 @@ async function maybeDeleteOrReact(config: WarmupConfig, channelIds: string[]): P
 interface SessionRow {
   id: string;
   tenantId: string;
-  channelAId: string;
-  channelBId: string;
+  channelIds: string[];
   beatsToday: number;
   beatsDate: string | null;
 }
 
-/** Executa uma troca de mensagem. Retorna true se enviou. */
+/** Resolve o pool de canais: usa channelIds; cai para o par legado A/B. */
+export function resolvePool(session: {
+  channelIds: string[];
+  channelAId: string | null;
+  channelBId: string | null;
+}): string[] {
+  if (session.channelIds.length) return session.channelIds;
+  return [session.channelAId, session.channelBId].filter((x): x is string => Boolean(x));
+}
+
+// Anti-repetição: último par sorteado por sessão (em memória, best-effort).
+const lastPairKey = new Map<string, string>();
+const pairKey = (a: string, b: string) => [a, b].sort().join('|');
+
+/** Sorteia um par (remetente, destinatário) do pool, com viés para veteranos. */
+function choosePair(
+  connected: Chan[],
+  veteranIds: string[],
+  lastKey: string | undefined,
+): [Chan, Chan] {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const vets = connected.filter((c) => veteranIds.includes(c.id));
+    // Veterano puxa a conversa em ~60% das vezes (quando houver veterano).
+    const sender = vets.length && Math.random() < 0.6 ? pick(vets) : pick(connected);
+    const others = connected.filter((c) => c.id !== sender.id);
+    const receiver = pick(others);
+    // Evita repetir o último par quando o pool tem 3+ (dá pra variar).
+    if (connected.length > 2 && pairKey(sender.id, receiver.id) === lastKey) continue;
+    return [sender, receiver];
+  }
+  return [connected[0] as Chan, connected[1] as Chan];
+}
+
+/** Executa uma troca de mensagem entre um par sorteado do pool. Retorna true se enviou. */
 export async function runBeat(session: SessionRow, config: WarmupConfig): Promise<boolean> {
-  const [a, b] = await Promise.all([loadChan(session.channelAId), loadChan(session.channelBId)]);
-  if (!a || !b) {
-    logger.warn({ sessionId: session.id }, 'aquecimento: canal inexistente');
+  if (session.channelIds.length < 2) {
+    logger.warn({ sessionId: session.id }, 'aquecimento: pool precisa de 2+ canais');
     return false;
   }
-  if (a.status !== 'CONNECTED' || b.status !== 'CONNECTED') {
-    logger.warn({ sessionId: session.id }, 'aquecimento: canais precisam estar conectados');
-    return false;
-  }
-  const aPhone = a.phoneNumber;
-  const bPhone = b.phoneNumber;
-  if (!aPhone || !bPhone) {
-    logger.warn({ sessionId: session.id }, 'aquecimento: canal sem número (conecte primeiro)');
+  const loaded = (await Promise.all(session.channelIds.map(loadChan))).filter((c): c is Chan =>
+    Boolean(c),
+  );
+  const connected = loaded.filter((c) => c.status === 'CONNECTED' && c.phoneNumber);
+  if (connected.length < 2) {
+    logger.warn({ sessionId: session.id }, 'aquecimento: 2+ canais precisam estar conectados');
     return false;
   }
 
-  // Alterna o remetente a cada mensagem.
-  const senderIsA = session.beatsToday % 2 === 0;
-  const sender = senderIsA ? a : b;
-  const receiverNumber = senderIsA ? bPhone : aPhone;
-  const persona = (senderIsA ? config.personaA : config.personaB) ?? '';
+  const [sender, receiver] = choosePair(
+    connected,
+    config.veteranIds ?? [],
+    lastPairKey.get(session.id),
+  );
+  lastPairKey.set(session.id, pairKey(sender.id, receiver.id));
+  const receiverNumber = receiver.phoneNumber as string;
+  // Veterano usa o estilo A; novato usa o estilo B (só para variar o tom).
+  const persona =
+    ((config.veteranIds ?? []).includes(sender.id) ? config.personaA : config.personaB) ?? '';
 
-  const history = await recentHistory([a.id, b.id], sender.id);
+  const history = await recentHistory(session.channelIds, sender.id);
   const text = await generateMessage(session.tenantId, config, persona, history);
 
   // "digitando…" antes de mandar (tempo proporcional ao tamanho).
@@ -321,7 +358,7 @@ export async function runBeat(session: SessionRow, config: WarmupConfig): Promis
     });
   }
 
-  await maybeDeleteOrReact(config, [a.id, b.id]);
+  await maybeDeleteOrReact(config, session.channelIds);
   return true;
 }
 
@@ -339,6 +376,7 @@ export async function tickWarmup(now = new Date()): Promise<void> {
       select: {
         id: true,
         tenantId: true,
+        channelIds: true,
         channelAId: true,
         channelBId: true,
         config: true,
@@ -370,8 +408,7 @@ export async function tickWarmup(now = new Date()): Promise<void> {
           {
             id: s.id,
             tenantId: s.tenantId,
-            channelAId: s.channelAId,
-            channelBId: s.channelBId,
+            channelIds: resolvePool(s),
             beatsToday,
             beatsDate: today,
           },

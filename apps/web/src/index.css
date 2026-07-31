@@ -837,6 +837,45 @@ h2 {
   margin: 6px 0;
   font-size: 13px;
 }
+.wu-pool-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.wu-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.wu-pick.on {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.wu-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.wu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px;
+}
+.wu-vet {
+  font-size: 12px;
+}
 
 /* ===================== Configurações de IA ===================== */
 .settings {

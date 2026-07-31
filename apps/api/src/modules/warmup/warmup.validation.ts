@@ -21,22 +21,21 @@ const config = z
     personaA: z.string().max(500).optional(),
     personaB: z.string().max(500).optional(),
     phrases: z.array(z.string().max(300)).max(200).optional(),
+    veteranIds: z.array(z.string()).max(50).optional(),
   })
   .optional();
 
 export const createSessionSchema = z.object({
   companyId: z.string().min(1),
   name: z.string().max(120).optional(),
-  channelAId: z.string().min(1),
-  channelBId: z.string().min(1),
+  channelIds: z.array(z.string().min(1)).min(2, 'Selecione ao menos 2 canais'),
   config,
 });
 
 export const updateSessionSchema = z.object({
   name: z.string().max(120).optional(),
   companyId: z.string().min(1).optional(),
-  channelAId: z.string().min(1).optional(),
-  channelBId: z.string().min(1).optional(),
+  channelIds: z.array(z.string().min(1)).min(2).optional(),
   status: z.enum(['RUNNING', 'PAUSED']).optional(),
   config,
 });

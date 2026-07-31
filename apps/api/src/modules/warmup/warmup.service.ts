@@ -1,6 +1,12 @@
 import { prisma, getTenantContext, type Prisma } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
-import { defaultWarmupConfig, parseConfig, runBeat, type WarmupConfig } from './warmup.engine';
+import {
+  defaultWarmupConfig,
+  parseConfig,
+  resolvePool,
+  runBeat,
+  type WarmupConfig,
+} from './warmup.engine';
 
 function tenantId(): string {
   const id = getTenantContext()?.tenantId;
@@ -17,8 +23,7 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 export interface SessionInput {
   companyId: string;
   name?: string;
-  channelAId: string;
-  channelBId: string;
+  channelIds: string[];
   config?: Partial<WarmupConfig>;
   status?: 'RUNNING' | 'PAUSED';
 }
@@ -27,8 +32,9 @@ async function present(s: {
   id: string;
   companyId: string;
   name: string;
-  channelAId: string;
-  channelBId: string;
+  channelIds: string[];
+  channelAId: string | null;
+  channelBId: string | null;
   status: string;
   config: unknown;
   lastBeatAt: Date | null;
@@ -36,24 +42,27 @@ async function present(s: {
   beatsDate: string | null;
   createdAt: Date;
 }) {
-  const ids = [s.channelAId, s.channelBId];
+  const pool = resolvePool(s);
   const channels = await prisma.evolutionInstance.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: pool } },
     select: { id: true, name: true, status: true, phoneNumber: true },
   });
   const byId = new Map(channels.map((c) => [c.id, c]));
+  const config = parseConfig(s.config);
   return {
     id: s.id,
     companyId: s.companyId,
     name: s.name,
-    channelAId: s.channelAId,
-    channelBId: s.channelBId,
-    channelAName: byId.get(s.channelAId)?.name ?? '—',
-    channelBName: byId.get(s.channelBId)?.name ?? '—',
-    channelAConnected: byId.get(s.channelAId)?.status === 'CONNECTED',
-    channelBConnected: byId.get(s.channelBId)?.status === 'CONNECTED',
+    channelIds: pool,
+    channels: pool.map((id) => ({
+      id,
+      name: byId.get(id)?.name ?? '—',
+      connected: byId.get(id)?.status === 'CONNECTED',
+      phoneNumber: byId.get(id)?.phoneNumber ?? null,
+      veteran: (config.veteranIds ?? []).includes(id),
+    })),
     status: s.status,
-    config: parseConfig(s.config),
+    config,
     lastBeatAt: s.lastBeatAt,
     beatsToday: s.beatsDate === todayStr() ? s.beatsToday : 0,
     createdAt: s.createdAt,
@@ -68,31 +77,31 @@ export async function listSessions(companyId?: string | null) {
   return Promise.all(sessions.map(present));
 }
 
-async function assertCompanyAndChannels(input: SessionInput) {
+async function assertCompanyAndChannels(companyId: string, channelIds: string[]) {
   const company = await prisma.company.findFirst({
-    where: { id: input.companyId, deletedAt: null },
+    where: { id: companyId, deletedAt: null },
     select: { id: true },
   });
   if (!company) throw new HttpError(404, 'Empresa não encontrada');
-  if (input.channelAId === input.channelBId)
-    throw new HttpError(400, 'Escolha dois canais diferentes');
+  const unique = Array.from(new Set(channelIds));
+  if (unique.length < 2) throw new HttpError(400, 'Selecione pelo menos 2 canais diferentes');
   const channels = await prisma.evolutionInstance.findMany({
-    where: { id: { in: [input.channelAId, input.channelBId] }, deletedAt: null },
+    where: { id: { in: unique }, deletedAt: null },
     select: { id: true },
   });
-  if (channels.length !== 2) throw new HttpError(404, 'Canal não encontrado');
+  if (channels.length !== unique.length) throw new HttpError(404, 'Canal não encontrado');
+  return unique;
 }
 
 export async function createSession(input: SessionInput) {
-  await assertCompanyAndChannels(input);
+  const channelIds = await assertCompanyAndChannels(input.companyId, input.channelIds);
   const config = { ...defaultWarmupConfig(), ...(input.config ?? {}) };
   const created = await prisma.warmupSession.create({
     data: {
       tenantId: tenantId(),
       companyId: input.companyId,
       name: input.name?.trim() || 'Aquecimento',
-      channelAId: input.channelAId,
-      channelBId: input.channelBId,
+      channelIds,
       status: 'PAUSED',
       config: config as unknown as Prisma.InputJsonValue,
     },
@@ -103,12 +112,13 @@ export async function createSession(input: SessionInput) {
 export async function updateSession(id: string, patch: Partial<SessionInput>) {
   const existing = await prisma.warmupSession.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new HttpError(404, 'Sessão não encontrada');
-  if (patch.channelAId || patch.channelBId || patch.companyId) {
-    await assertCompanyAndChannels({
-      companyId: patch.companyId ?? existing.companyId,
-      channelAId: patch.channelAId ?? existing.channelAId,
-      channelBId: patch.channelBId ?? existing.channelBId,
-    });
+
+  let channelIds: string[] | undefined;
+  if (patch.channelIds || patch.companyId) {
+    channelIds = await assertCompanyAndChannels(
+      patch.companyId ?? existing.companyId,
+      patch.channelIds ?? resolvePool(existing),
+    );
   }
   const nextConfig = patch.config
     ? ({ ...parseConfig(existing.config), ...patch.config } as unknown as Prisma.InputJsonValue)
@@ -118,8 +128,7 @@ export async function updateSession(id: string, patch: Partial<SessionInput>) {
     data: {
       ...(patch.name !== undefined ? { name: patch.name.trim() || 'Aquecimento' } : {}),
       ...(patch.companyId ? { companyId: patch.companyId } : {}),
-      ...(patch.channelAId ? { channelAId: patch.channelAId } : {}),
-      ...(patch.channelBId ? { channelBId: patch.channelBId } : {}),
+      ...(channelIds ? { channelIds } : {}),
       ...(patch.status ? { status: patch.status } : {}),
       ...(nextConfig ? { config: nextConfig } : {}),
     },
@@ -152,14 +161,7 @@ export async function runNow(id: string) {
   const today = todayStr();
   const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
   const sent = await runBeat(
-    {
-      id: s.id,
-      tenantId: s.tenantId,
-      channelAId: s.channelAId,
-      channelBId: s.channelBId,
-      beatsToday,
-      beatsDate: today,
-    },
+    { id: s.id, tenantId: s.tenantId, channelIds: resolvePool(s), beatsToday, beatsDate: today },
     config,
   );
   if (sent) {
@@ -188,7 +190,6 @@ export async function listAssets(companyId?: string | null) {
       createdAt: true,
     },
   });
-  // Devolve como data URL pronta para <img>.
   return assets.map((a) => ({
     id: a.id,
     name: a.name,
@@ -206,7 +207,6 @@ export interface AssetInput {
 }
 
 export async function addAsset(input: AssetInput) {
-  // Aceita tanto data URL ("data:image/png;base64,....") quanto base64 puro.
   let mime = input.mimeType;
   let data = input.dataBase64;
   const m = /^data:([^;]+);base64,(.*)$/s.exec(data);

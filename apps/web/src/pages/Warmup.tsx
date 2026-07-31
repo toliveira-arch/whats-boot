@@ -147,11 +147,11 @@ function ConfigEditor({
       </label>
       <div className="grid2">
         <label className="field">
-          <span>Estilo do chip A</span>
+          <span>Estilo do veterano</span>
           <input value={config.personaA ?? ''} onChange={(e) => set('personaA', e.target.value)} />
         </label>
         <label className="field">
-          <span>Estilo do chip B</span>
+          <span>Estilo do novato</span>
           <input value={config.personaB ?? ''} onChange={(e) => set('personaB', e.target.value)} />
         </label>
       </div>
@@ -197,8 +197,7 @@ export function Warmup() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const [name, setName] = useState('');
-  const [chA, setChA] = useState('');
-  const [chB, setChB] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     listCompanies()
@@ -228,22 +227,24 @@ export function Warmup() {
     ? channels.filter((c) => !c.companyId || c.companyId === companyId)
     : channels;
 
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   async function create() {
-    if (!companyId || !chA || !chB) {
-      setMsg('Selecione empresa e os dois canais');
+    if (!companyId || selected.size < 2) {
+      setMsg('Selecione a empresa e ao menos 2 chips para o pool');
       return;
     }
     setMsg(null);
     try {
-      await wu.createSession({
-        companyId,
-        name: name || undefined,
-        channelAId: chA,
-        channelBId: chB,
-      });
+      await wu.createSession({ companyId, name: name || undefined, channelIds: [...selected] });
       setName('');
-      setChA('');
-      setChB('');
+      setSelected(new Set());
       reload();
       setMsg('Sessão criada ✅');
     } catch (err) {
@@ -271,9 +272,10 @@ export function Warmup() {
     <div className="settings">
       <h1>Aquecimento de chip</h1>
       <p className="sub">
-        Dois chips seus conversam entre si em horários programados, com comportamento humano
-        (digitando, imagens, ramp-up), para aquecer números novos e reduzir bloqueios. As conversas
-        aparecem no <strong>Chat</strong> para acompanhamento.
+        Um <strong>pool de chips</strong> seus conversa entre si (pares sorteados) em horários
+        programados, com comportamento humano (digitando, imagens, ramp-up), para aquecer números
+        novos e reduzir bloqueios. As conversas aparecem no <strong>Chat</strong> para
+        acompanhamento.
       </p>
       {msg && (
         <div className="error" style={{ borderColor: 'var(--accent)' }}>
@@ -331,39 +333,33 @@ export function Warmup() {
 
       <div className="card-form">
         <h2>Nova sessão de aquecimento</h2>
-        <div className="grid2">
-          <label className="field">
-            <span>Nome</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Aquecimento chip novo"
-            />
-          </label>
-          <label className="field">
-            <span>Chip A</span>
-            <select value={chA} onChange={(e) => setChA(e.target.value)}>
-              <option value="">Selecione…</option>
-              {companyChannels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Chip B</span>
-            <select value={chB} onChange={(e) => setChB(e.target.value)}>
-              <option value="">Selecione…</option>
-              {companyChannels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <label className="field">
+          <span>Nome</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Aquecimento chips novos"
+          />
+        </label>
+        <label className="field">
+          <span>Pool de chips (selecione 2 ou mais)</span>
+        </label>
+        <div className="wu-pool-pick">
+          {companyChannels.length === 0 && (
+            <span className="sub">Nenhum canal nesta empresa. Cadastre no menu Canais.</span>
+          )}
+          {companyChannels.map((c) => (
+            <label key={c.id} className={`wu-pick ${selected.has(c.id) ? 'on' : ''}`}>
+              <input
+                type="checkbox"
+                checked={selected.has(c.id)}
+                onChange={() => toggleSelected(c.id)}
+              />
+              <span>{c.name}</span>
+            </label>
+          ))}
         </div>
-        <button className="btn" onClick={() => void create()}>
+        <button className="btn" onClick={() => void create()} style={{ marginTop: 10 }}>
           Criar sessão
         </button>
       </div>
@@ -386,6 +382,16 @@ function SessionCard({
 }) {
   const [config, setConfig] = useState<WarmupConfig>(session.config);
   const running = session.status === 'RUNNING';
+  const allConnected = session.channels.every((c) => c.connected);
+  const veteranIds = config.veteranIds ?? [];
+
+  const toggleVeteran = (id: string) =>
+    setConfig((c) => {
+      const set = new Set(c.veteranIds ?? []);
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      return { ...c, veteranIds: [...set] };
+    });
 
   async function toggle() {
     try {
@@ -411,7 +417,7 @@ function SessionCard({
       setMsg(
         r.sent
           ? 'Mensagem de teste enviada ✅'
-          : 'Não enviou — verifique se os dois chips estão conectados',
+          : 'Não enviou — verifique se ao menos 2 chips do pool estão conectados',
       );
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Erro no teste');
@@ -432,12 +438,17 @@ function SessionCard({
       <div className="wu-head">
         <div>
           <h2>{session.name}</h2>
-          <p className="sub">
-            {session.channelAName}{' '}
-            <span className={`dot ${session.channelAConnected ? 'ok' : 'err'}`} /> ↔{' '}
-            {session.channelBName}{' '}
-            <span className={`dot ${session.channelBConnected ? 'ok' : 'err'}`} /> · hoje:{' '}
-            {session.beatsToday} msgs
+          <div className="wu-pool">
+            {session.channels.map((c) => (
+              <span key={c.id} className="wu-chip">
+                <span className={`dot ${c.connected ? 'ok' : 'err'}`} />
+                {c.name}
+                {c.veteran && <span className="wu-vet">🎓</span>}
+              </span>
+            ))}
+          </div>
+          <p className="sub small" style={{ marginTop: 6 }}>
+            Pares sorteados no pool · hoje: {session.beatsToday} msgs
           </p>
         </div>
         <span className={`badge lead-${running ? 'QUALIFIED' : 'IN_PROGRESS'}`}>
@@ -445,10 +456,10 @@ function SessionCard({
         </span>
       </div>
 
-      {(!session.channelAConnected || !session.channelBConnected) && (
+      {!allConnected && (
         <p className="sub small" style={{ color: 'var(--warn)' }}>
-          ⚠️ Os dois chips precisam estar <strong>conectados</strong> (menu Canais) para o
-          aquecimento rodar.
+          ⚠️ Ao menos 2 chips do pool precisam estar <strong>conectados</strong> (menu Canais) para
+          o aquecimento rodar.
         </p>
       )}
 
@@ -471,6 +482,21 @@ function SessionCard({
 
       <details className="wu-details">
         <summary>Configuração do fluxo</summary>
+        <div className="wu-config">
+          <h4>Veteranos (já aquecidos — puxam a conversa dos novos)</h4>
+          <div className="wu-pool-pick">
+            {session.channels.map((c) => (
+              <label key={c.id} className={`wu-pick ${veteranIds.includes(c.id) ? 'on' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={veteranIds.includes(c.id)}
+                  onChange={() => toggleVeteran(c.id)}
+                />
+                <span>{c.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
         <ConfigEditor config={config} onChange={setConfig} />
         <button type="button" className="btn" onClick={() => void saveConfig()}>
           Salvar configuração
