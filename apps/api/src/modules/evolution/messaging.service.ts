@@ -3,6 +3,7 @@ import { HttpError } from '../../middlewares/error';
 import { decryptSecret } from '../../lib/crypto';
 import { broadcastToTenant } from '../../realtime/emitter';
 import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
+import { logger } from '../../lib/logger';
 import { createEvolutionClient, type SendMediaBody } from './evolution.client';
 
 type MediaType = SendMediaBody['mediatype'];
@@ -233,9 +234,10 @@ export async function processOutbound(job: OutboundJob): Promise<void> {
       return;
     }
 
-    const client = createEvolutionClient(channel.baseUrl, decryptSecret(channel.apiKeyEncrypted));
-
     try {
+      // Dentro do try: se a apikey não descriptografar (ex.: chave trocada),
+      // a mensagem é marcada como FAILED com o erro, em vez de falhar em silêncio.
+      const client = createEvolutionClient(channel.baseUrl, decryptSecret(channel.apiKeyEncrypted));
       const res =
         job.kind === 'text'
           ? await client.sendText(channel.instanceName, {
@@ -275,6 +277,10 @@ export async function processOutbound(job: OutboundJob): Promise<void> {
         status: 'SENT',
       });
     } catch (err) {
+      logger.error(
+        { err, messageId: job.messageId, channelId: job.channelId },
+        'falha ao enviar mensagem via Evolution (apikey/baseUrl/conexão?)',
+      );
       await prisma.message.update({
         where: { id: job.messageId },
         data: {
