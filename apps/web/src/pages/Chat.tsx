@@ -244,6 +244,11 @@ export function Chat() {
             await chat.updateConversation(conversation.id, { aiEnabled: enabled });
             await refreshDetail();
           }}
+          onResetMemory={async () => {
+            await chat.resetConversation(conversation.id);
+            await loadMessages(conversation.id);
+            await refreshDetail();
+          }}
         />
       )}
     </div>

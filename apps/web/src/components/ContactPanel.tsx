@@ -11,6 +11,7 @@ interface Props {
   onAddNote: (body: string) => void;
   onSetAiMode: (mode: AiMode) => void;
   onToggleAiEnabled: (enabled: boolean | null) => void;
+  onResetMemory: () => void;
 }
 
 export function ContactPanel({
@@ -23,6 +24,7 @@ export function ContactPanel({
   onAddNote,
   onSetAiMode,
   onToggleAiEnabled,
+  onResetMemory,
 }: Props) {
   const [newTag, setNewTag] = useState('');
   const [noteBody, setNoteBody] = useState('');
@@ -113,6 +115,21 @@ export function ContactPanel({
           <option value="COPILOT">Modo: Copiloto (sugere)</option>
           <option value="AUTOPILOT">Modo: Autopilot (responde)</option>
         </select>
+        <button
+          type="button"
+          className="btn ghost sm"
+          style={{ marginTop: 8 }}
+          onClick={() => {
+            if (
+              window.confirm(
+                'Limpar a memória desta conversa? Apaga o histórico que a IA lê e zera a qualificação (para testar variações de prompt).',
+              )
+            )
+              onResetMemory();
+          }}
+        >
+          🧹 Limpar memória (teste)
+        </button>
       </div>
 
       <div className="cp-section">

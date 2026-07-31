@@ -132,6 +132,11 @@ export function markRead(id: string): Promise<{ ok: boolean }> {
   return authFetch(`/conversations/${id}/read`, { method: 'POST' });
 }
 
+/** Limpa a memória da conversa (histórico + qualificação) para testes de prompt. */
+export function resetConversation(id: string): Promise<{ ok: boolean }> {
+  return authFetch(`/conversations/${id}/reset`, { method: 'POST' });
+}
+
 export function updateConversation(
   id: string,
   patch: {

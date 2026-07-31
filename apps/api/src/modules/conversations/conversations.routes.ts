@@ -21,6 +21,7 @@ import {
   listTagsController,
   markReadController,
   removeTagController,
+  resetConversationController,
   sendMessageController,
   updateConversationController,
 } from './conversations.controller';
@@ -48,6 +49,7 @@ conversationsRouter.post(
   sendMessageController,
 );
 conversationsRouter.post('/:id/read', WRITE, markReadController);
+conversationsRouter.post('/:id/reset', WRITE, resetConversationController);
 conversationsRouter.patch(
   '/:id',
   WRITE,

@@ -38,6 +38,10 @@ export const markReadController = asyncHandler(async (req, res) => {
   res.json(await svc.markRead(req.params.id!));
 });
 
+export const resetConversationController = asyncHandler(async (req, res) => {
+  res.json(await svc.resetConversation(req.params.id!));
+});
+
 export const updateConversationController = asyncHandler(async (req, res) => {
   res.json(await svc.updateConversation(req.params.id!, req.body));
 });

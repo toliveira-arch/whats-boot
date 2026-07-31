@@ -1,4 +1,4 @@
-import { prisma, getTenantContext } from '@whats-boot/database';
+import { prisma, getTenantContext, Prisma } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
@@ -241,6 +241,41 @@ export async function updateConversation(conversationId: string, patch: UpdateCo
     aiMode: updated.aiMode,
     aiEnabled: updated.aiEnabled,
   };
+}
+
+/**
+ * Reinicia a conversa para TESTES: apaga (soft delete) o histórico que a IA lê,
+ * zera a qualificação e religa a IA. A conversa vira um "lead novo" sem trocar
+ * de número — útil para comparar variações de prompt.
+ */
+export async function resetConversation(conversationId: string) {
+  await requireConversation(conversationId);
+  await prisma.message.updateMany({
+    where: { conversationId, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      leadVerdict: null,
+      qualification: Prisma.DbNull,
+      aiEnabled: true,
+      unreadCount: 0,
+      status: 'OPEN',
+      lastMessageAt: null,
+      lastInboundAt: null,
+      lastOutboundAt: null,
+      firstResponseAt: null,
+    },
+  });
+  const tenantId = currentTenantId();
+  broadcastToTenant(tenantId, 'conversation.updated', { conversationId });
+  broadcastToTenant(tenantId, 'lead.updated', {
+    conversationId,
+    verdict: null,
+    qualification: null,
+  });
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
