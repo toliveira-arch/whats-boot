@@ -1051,3 +1051,93 @@ h2 {
   flex-direction: column;
   gap: 8px;
 }
+
+/* ===== Qualificação (SDR) — editor e ficha do lead ===== */
+.card-form h3 {
+  font-size: 13px;
+  margin: 16px 0 8px;
+  color: var(--text);
+}
+.qual-script {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.qual-field {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.qual-field input[type='text'],
+.qual-field input:not([type]) {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 12px;
+  min-width: 90px;
+}
+.qual-field .grow {
+  flex: 1;
+}
+.qual-req {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.qual-campaign {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 10px 0;
+  background: var(--bg);
+}
+.qual-details {
+  margin-top: 8px;
+}
+.qual-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* Ficha do lead no painel de contato */
+.lead-card {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lead-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 3px;
+}
+.lead-row strong {
+  text-align: right;
+  word-break: break-word;
+}
+.lead-summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.badge.lead-QUALIFIED {
+  background: #123d24;
+  color: #56d98a;
+}
+.badge.lead-DISQUALIFIED {
+  background: #3d1a1a;
+  color: #f08a8a;
+}
+.badge.lead-IN_PROGRESS {
+  background: #3d3312;
+  color: #e6c84f;
+}

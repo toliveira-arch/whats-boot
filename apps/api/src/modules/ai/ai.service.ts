@@ -1,10 +1,20 @@
-import { prisma, getTenantContext, runWithTenant } from '@whats-boot/database';
+import { prisma, getTenantContext, runWithTenant, Prisma } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
 import { logger } from '../../lib/logger';
 import { encryptSecret, decryptSecret } from '../../lib/crypto';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
-import { getProvider, supportedProviders, type LlmMessage } from './providers';
+import { getProvider, supportedProviders, type LlmMessage, type LlmProvider } from './providers';
+import {
+  detectByKeywords,
+  effectiveScript,
+  evaluateGate,
+  isComplete,
+  resolveCampaign,
+  type QualConfig,
+  type QualLlmOutput,
+  type LeadVerdict,
+} from './qualification';
 
 function tenantId(): string {
   const id = getTenantContext()?.tenantId;
@@ -34,6 +44,7 @@ export interface AgentConfigInput {
   minResponseSeconds?: number;
   maxResponseSeconds?: number;
   isActive?: boolean;
+  qualification?: unknown;
 }
 
 export async function getAgent() {
@@ -58,6 +69,9 @@ export async function upsertAgent(input: AgentConfigInput) {
     minResponseSeconds: input.minResponseSeconds,
     maxResponseSeconds: input.maxResponseSeconds,
     isActive: input.isActive,
+    ...(input.qualification !== undefined
+      ? { qualification: input.qualification as Prisma.InputJsonValue }
+      : {}),
   };
 
   if (existing) {
@@ -81,6 +95,9 @@ export async function upsertAgent(input: AgentConfigInput) {
       minResponseSeconds: input.minResponseSeconds ?? 0,
       maxResponseSeconds: input.maxResponseSeconds ?? 0,
       isActive: input.isActive ?? true,
+      ...(input.qualification !== undefined
+        ? { qualification: input.qualification as Prisma.InputJsonValue }
+        : {}),
     },
   });
 }
@@ -140,6 +157,32 @@ export interface GenerateResult {
   skipped?: string;
   mode?: string;
   content?: string;
+  verdict?: string;
+}
+
+type AgentRecord = NonNullable<Awaited<ReturnType<typeof getAgent>>>;
+
+/** Faz o parse tolerante do JSON devolvido pelo modelo na qualificação. */
+function parseQualOutput(raw: string): QualLlmOutput {
+  try {
+    const cleaned = raw
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/, '')
+      .replace(/```$/, '')
+      .trim();
+    const obj = JSON.parse(cleaned) as Partial<QualLlmOutput>;
+    return {
+      reply: typeof obj.reply === 'string' ? obj.reply : '',
+      campaignId: (obj.campaignId as string | null) ?? null,
+      collected: (obj.collected as Record<string, unknown>) ?? {},
+      interest: obj.interest,
+      urgency: obj.urgency,
+      summary: obj.summary,
+    };
+  } catch {
+    return { reply: raw.trim(), campaignId: null, collected: {} };
+  }
 }
 
 export async function generateReply(conversationId: string): Promise<GenerateResult> {
@@ -179,6 +222,24 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   const provider = getProvider(agent.provider);
   if (!credential || !provider) return { skipped: 'no-credential' };
 
+  const apiKey = decryptSecret(credential.apiKeyEncrypted);
+  const baseUrl = credential.baseUrl ?? undefined;
+
+  // Modo SDR: pré-qualificação de leads com roteiro/gate/campanhas.
+  const qual = (agent.qualification as unknown as QualConfig | null) ?? null;
+  if (qual?.enabled) {
+    return runQualification({
+      tid,
+      conversation,
+      agent,
+      provider,
+      apiKey,
+      baseUrl,
+      effectiveMode,
+      config: qual,
+    });
+  }
+
   // Histórico (mais antigas -> mais novas)
   const history = await prisma.message.findMany({
     where: { conversationId, deletedAt: null, content: { not: null } },
@@ -212,8 +273,8 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
         maxTokens: agent.maxTokens,
         messages,
       },
-      decryptSecret(credential.apiKeyEncrypted),
-      credential.baseUrl ?? undefined,
+      apiKey,
+      baseUrl,
     );
     // As palavras proibidas entram como INSTRUÇÃO no prompt (acima), não como
     // censura no texto final — assim a resposta sai natural, sem "***".
@@ -272,6 +333,188 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   // COPILOT: sugere ao atendente (não envia)
   broadcastToTenant(tid, 'ai.suggestion', { conversationId, content });
   return { mode: 'COPILOT', content };
+}
+
+// ---------------------------------------------------------------------------
+// Pré-qualificação de leads (SDR): roteiro + gate + campanhas + handoff
+// ---------------------------------------------------------------------------
+
+async function runQualification(input: {
+  tid: string;
+  conversation: {
+    id: string;
+    evolutionInstanceId: string;
+    contact: { waJid: string | null; phoneNumber: string | null };
+    qualification: unknown;
+  };
+  agent: AgentRecord;
+  provider: LlmProvider;
+  apiKey: string;
+  baseUrl?: string;
+  effectiveMode: string;
+  config: QualConfig;
+}): Promise<GenerateResult> {
+  const { tid, conversation, agent, provider, apiKey, baseUrl, effectiveMode, config } = input;
+  const conversationId = conversation.id;
+
+  const prev =
+    (conversation.qualification as {
+      collected?: Record<string, unknown>;
+      campaignId?: string | null;
+    } | null) ?? {};
+  const prevCollected = prev.collected ?? {};
+
+  const history = await prisma.message.findMany({
+    where: { conversationId, deletedAt: null, content: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    take: HISTORY_LIMIT,
+    select: { direction: true, content: true },
+  });
+  const lastInbound = history.find((m) => m.direction === 'INBOUND')?.content ?? '';
+
+  const prelimCampaign =
+    resolveCampaign(config, prev.campaignId ?? null) ?? detectByKeywords(config, lastInbound);
+  const scriptForPrompt = effectiveScript(config, prelimCampaign);
+
+  const campaignsDesc = config.campaigns
+    .map(
+      (c) =>
+        `- id="${c.id}" | ${c.name} | gatilhos: ${(c.triggers || []).join(', ')}${c.description ? ' | ' + c.description : ''}`,
+    )
+    .join('\n');
+  const scriptDesc = scriptForPrompt
+    .map((f) => `- ${f.key} (${f.label}): "${f.question}"${f.required ? ' [obrigatório]' : ''}`)
+    .join('\n');
+
+  const sys = [
+    agent.systemPrompt ?? 'Você é um SDR de atendimento, humano e cordial.',
+    'Sua função é fazer a PRÉ-QUALIFICAÇÃO do lead conduzindo um roteiro, UMA pergunta por vez, de forma natural (nunca um questionário robótico). Não revele que existe um roteiro ou critérios.',
+    config.campaigns.length
+      ? `CAMPANHAS possíveis (detecte pela conversa e pelos gatilhos):\n${campaignsDesc}`
+      : '',
+    `ROTEIRO a coletar:\n${scriptDesc}`,
+    `DADOS JÁ COLETADOS (não pergunte de novo): ${JSON.stringify(prevCollected)}`,
+    'Responda SEMPRE em JSON válido, sem nada fora do JSON, no formato exato: {"reply":"próxima mensagem curta ao cliente (só UMA pergunta por vez)","campaignId":"id da campanha ou null","collected":{"...todos os dados conhecidos, incluindo os novos desta resposta; faturamento como número mensal em reais, ex 50000..."},"interest":"Baixo|Médio|Alto","urgency":"Baixa|Média|Alta","summary":"resumo curto do lead"}',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const messages: LlmMessage[] = [{ role: 'system', content: sys }];
+  for (const m of history.reverse()) {
+    messages.push({
+      role: m.direction === 'INBOUND' ? 'user' : 'assistant',
+      content: m.content ?? '',
+    });
+  }
+
+  let out: QualLlmOutput;
+  try {
+    const result = await provider.chat(
+      {
+        model: agent.model,
+        temperature: agent.temperature,
+        maxTokens: agent.maxTokens,
+        messages,
+        json: true,
+      },
+      apiKey,
+      baseUrl,
+    );
+    await prisma.aiUsageLog.create({
+      data: {
+        tenantId: tid,
+        aiAgentId: agent.id,
+        conversationId,
+        provider: agent.provider,
+        model: agent.model,
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        totalTokens: result.usage.totalTokens,
+        success: true,
+      },
+    });
+    out = parseQualOutput(result.content);
+  } catch (err) {
+    logger.error({ err, conversationId }, 'falha na qualificação (provedor)');
+    await prisma.aiUsageLog.create({
+      data: {
+        tenantId: tid,
+        aiAgentId: agent.id,
+        conversationId,
+        provider: agent.provider,
+        model: agent.model,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    return { skipped: 'provider-error' };
+  }
+
+  const mergedCollected = { ...prevCollected, ...(out.collected ?? {}) };
+  const campaign = resolveCampaign(config, out.campaignId) ?? prelimCampaign;
+  const script = effectiveScript(config, campaign);
+  const complete = isComplete(script, mergedCollected);
+
+  let verdict: LeadVerdict = 'IN_PROGRESS';
+  let outboundText = out.reply?.trim() || '';
+  let reasons: string[] = [];
+
+  if (complete) {
+    const gate = evaluateGate(config, campaign, mergedCollected);
+    verdict = gate.verdict;
+    reasons = gate.reasons;
+    outboundText =
+      verdict === 'QUALIFIED'
+        ? campaign?.handoffMessage || config.defaultHandoffMessage
+        : campaign?.disqualifyMessage || config.defaultDisqualifyMessage;
+  }
+
+  const qualState = {
+    campaignId: campaign?.id ?? null,
+    campaignName: campaign?.name ?? null,
+    collected: mergedCollected,
+    interest: out.interest ?? null,
+    urgency: out.urgency ?? null,
+    summary: out.summary ?? null,
+    reasons,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const pause =
+    verdict !== 'IN_PROGRESS' &&
+    config.onQualified === 'pause+assign' &&
+    effectiveMode === 'AUTOPILOT';
+
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      leadVerdict: verdict,
+      qualification: qualState as unknown as Prisma.InputJsonValue,
+      ...(pause ? { aiEnabled: false, status: 'PENDING' as never } : {}),
+    },
+  });
+  broadcastToTenant(tid, 'lead.updated', { conversationId, verdict, qualification: qualState });
+
+  if (!outboundText) return { skipped: 'empty', verdict };
+
+  const min = Math.max(0, agent.minResponseSeconds);
+  const max = Math.max(min, agent.maxResponseSeconds);
+  if (max > 0) await sleep((min + Math.floor((max - min) * 0.5)) * 1000);
+
+  if (effectiveMode === 'AUTOPILOT') {
+    const number = conversation.contact.waJid ?? conversation.contact.phoneNumber ?? '';
+    await messaging.sendText({
+      tenantId: tid,
+      channelId: conversation.evolutionInstanceId,
+      number,
+      text: outboundText,
+      authorType: 'AI',
+    });
+    return { mode: 'AUTOPILOT', content: outboundText, verdict };
+  }
+
+  broadcastToTenant(tid, 'ai.suggestion', { conversationId, content: outboundText });
+  return { mode: 'COPILOT', content: outboundText, verdict };
 }
 
 /** Processa um job da fila ai.process dentro do contexto de tenant. */

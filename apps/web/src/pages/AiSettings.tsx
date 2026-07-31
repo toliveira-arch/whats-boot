@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import * as ai from '../lib/ai';
-import type { AiAgent } from '../lib/ai';
+import type { AiAgent, QualConfig } from '../lib/ai';
+import { emptyQualConfig } from '../lib/ai';
+import { QualificationEditor } from '../components/QualificationEditor';
 import { ApiError } from '../lib/api';
 
 const EMPTY: ai.AiAgentInput = {
@@ -32,6 +34,7 @@ export function AiSettings() {
   const [form, setForm] = useState<ai.AiAgentInput>(EMPTY);
   const [forbidden, setForbidden] = useState('');
   const [required, setRequired] = useState('');
+  const [qual, setQual] = useState<QualConfig>(emptyQualConfig());
   const [creds, setCreds] = useState<ai.CredentialsInfo | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -47,6 +50,7 @@ export function AiSettings() {
           setForm(a);
           setForbidden(a.forbiddenWords.join(', '));
           setRequired(a.requiredWords.join(', '));
+          if (a.qualification) setQual({ ...emptyQualConfig(), ...a.qualification });
         }
       })
       .catch(() => undefined);
@@ -63,7 +67,12 @@ export function AiSettings() {
     e.preventDefault();
     setMsg(null);
     try {
-      await ai.saveAgent({ ...form, forbiddenWords: csv(forbidden), requiredWords: csv(required) });
+      await ai.saveAgent({
+        ...form,
+        forbiddenWords: csv(forbidden),
+        requiredWords: csv(required),
+        qualification: qual,
+      });
       setMsg('Configuração salva ✅');
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Erro ao salvar');
@@ -224,8 +233,10 @@ export function AiSettings() {
           </label>
         </div>
 
+        <QualificationEditor value={qual} onChange={setQual} />
+
         <button type="submit" className="btn">
-          Salvar agente
+          Salvar agente e qualificação
         </button>
       </form>
 

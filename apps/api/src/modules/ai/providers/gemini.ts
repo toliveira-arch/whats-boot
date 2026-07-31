@@ -39,6 +39,7 @@ export const geminiProvider: LlmProvider = {
         generationConfig: {
           temperature: req.temperature,
           maxOutputTokens: req.maxTokens,
+          ...(req.json ? { responseMimeType: 'application/json' } : {}),
         },
       }),
     });

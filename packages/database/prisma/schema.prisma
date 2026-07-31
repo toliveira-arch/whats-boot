@@ -908,6 +908,8 @@ model Conversation {
   subject             String?
   aiMode              AiMode               @default(OFF)
   aiEnabled           Boolean? // override por conversa: null=herda instância/agente, true/false=forçado
+  leadVerdict         String? // IN_PROGRESS | QUALIFIED | DISQUALIFIED (pré-qualificação SDR)
+  qualification       Json? // campanha detectada, dados coletados, resumo, interesse/urgência
   unreadCount         Int                  @default(0)
   isPinned            Boolean              @default(false)
   isArchived          Boolean              @default(false)
@@ -1175,6 +1177,8 @@ model AiAgent {
   knowledgeBaseId       String?
   tools                 Json?
   handoffRules          Json?
+  // Qualificação de leads (SDR): roteiro, gate/piso, campanhas, handoff.
+  qualification         Json?
   // Guardrails / config de operação (ETAPA 9)
   forbiddenWords             String[] @default([])
   requiredWords              String[] @default([])

@@ -6,6 +6,41 @@ const time = z
   .nullable()
   .optional();
 
+const qualField = z.object({
+  key: z.string().min(1).max(40),
+  label: z.string().min(1).max(120),
+  question: z.string().min(1).max(500),
+  required: z.boolean(),
+});
+
+const qualCampaign = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(120),
+  triggers: z.array(z.string()).default([]),
+  description: z.string().max(500).optional(),
+  revenueFloor: z.number().nonnegative().nullable().optional(),
+  requireDecisionMaker: z.boolean().optional(),
+  requireCnpj: z.boolean().optional(),
+  acceptedIndustries: z.array(z.string()).optional(),
+  excludedIndustries: z.array(z.string()).optional(),
+  script: z.array(qualField).optional(),
+  disqualifyMessage: z.string().max(2000).optional(),
+  handoffMessage: z.string().max(2000).optional(),
+});
+
+const qualification = z
+  .object({
+    enabled: z.boolean(),
+    detection: z.enum(['ai+keywords', 'keywords']).default('ai+keywords'),
+    onQualified: z.enum(['pause+assign', 'mark']).default('pause+assign'),
+    defaultScript: z.array(qualField).default([]),
+    defaultRevenueFloor: z.number().nonnegative().nullable().optional(),
+    defaultDisqualifyMessage: z.string().max(2000).default(''),
+    defaultHandoffMessage: z.string().max(2000).default(''),
+    campaigns: z.array(qualCampaign).default([]),
+  })
+  .optional();
+
 export const agentSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   provider: z.enum(['OPENAI', 'GOOGLE']).optional(),
@@ -22,6 +57,7 @@ export const agentSchema = z.object({
   minResponseSeconds: z.number().int().min(0).max(600).optional(),
   maxResponseSeconds: z.number().int().min(0).max(600).optional(),
   isActive: z.boolean().optional(),
+  qualification,
 });
 
 export const credentialSchema = z.object({

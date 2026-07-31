@@ -10,6 +10,8 @@ export interface LlmRequest {
   temperature: number;
   maxTokens: number;
   messages: LlmMessage[];
+  /** Quando true, pede ao provedor uma resposta JSON (structured output). */
+  json?: boolean;
 }
 
 export interface LlmUsage {

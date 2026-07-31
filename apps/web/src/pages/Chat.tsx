@@ -128,15 +128,26 @@ export function Chat() {
     const onSuggestion = (payload: { conversationId?: string; content?: string }) => {
       if (payload.conversationId === selectedRef.current) setSuggestion(payload.content ?? null);
     };
+    const onLead = (payload: { conversationId?: string }) => {
+      if (payload.conversationId === selectedRef.current) {
+        chat
+          .getConversation(payload.conversationId)
+          .then(setConversation)
+          .catch(() => undefined);
+      }
+      void loadList();
+    };
     socket.on('message.created', onCreated);
     socket.on('message.status', onStatus);
     socket.on('conversation.updated', onUpdated);
     socket.on('ai.suggestion', onSuggestion);
+    socket.on('lead.updated', onLead);
     return () => {
       socket.off('message.created', onCreated);
       socket.off('message.status', onStatus);
       socket.off('conversation.updated', onUpdated);
       socket.off('ai.suggestion', onSuggestion);
+      socket.off('lead.updated', onLead);
     };
   }, [loadMessages, loadList]);
 

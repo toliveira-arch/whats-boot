@@ -52,6 +52,47 @@ export function ContactPanel({
         <div className="sub">{c.phoneNumber}</div>
       </div>
 
+      {conversation.leadVerdict && (
+        <div className="cp-section">
+          <h3>Qualificação (SDR)</h3>
+          <span className={`badge lead-${conversation.leadVerdict}`}>
+            {conversation.leadVerdict === 'QUALIFIED'
+              ? 'Qualificado (MQL)'
+              : conversation.leadVerdict === 'DISQUALIFIED'
+                ? 'Não qualificado'
+                : 'Em qualificação'}
+          </span>
+          {conversation.qualification && (
+            <div className="lead-card">
+              {conversation.qualification.campaignName && (
+                <div className="lead-row">
+                  <span className="sub">Campanha</span>
+                  <strong>{conversation.qualification.campaignName}</strong>
+                </div>
+              )}
+              {(conversation.qualification.interest || conversation.qualification.urgency) && (
+                <div className="lead-row">
+                  <span className="sub">Interesse / Urgência</span>
+                  <strong>
+                    {conversation.qualification.interest ?? '—'} /{' '}
+                    {conversation.qualification.urgency ?? '—'}
+                  </strong>
+                </div>
+              )}
+              {Object.entries(conversation.qualification.collected ?? {}).map(([k, v]) => (
+                <div key={k} className="lead-row">
+                  <span className="sub">{k}</span>
+                  <strong>{String(v)}</strong>
+                </div>
+              ))}
+              {conversation.qualification.summary && (
+                <p className="lead-summary">{conversation.qualification.summary}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="cp-section">
         <h3>Robô de IA nesta conversa</h3>
         <label className="ai-toggle">

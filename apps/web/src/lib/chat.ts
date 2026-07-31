@@ -16,6 +16,18 @@ export interface ChatTag {
 }
 
 export type AiMode = 'OFF' | 'COPILOT' | 'AUTOPILOT';
+export type LeadVerdict = 'IN_PROGRESS' | 'QUALIFIED' | 'DISQUALIFIED';
+
+export interface LeadQualification {
+  campaignId: string | null;
+  campaignName: string | null;
+  collected: Record<string, unknown>;
+  interest: string | null;
+  urgency: string | null;
+  summary: string | null;
+  reasons?: string[];
+  updatedAt?: string;
+}
 
 export interface ChannelRef {
   id: string;
@@ -30,6 +42,7 @@ export interface ConversationListItem {
   unreadCount: number;
   aiMode: AiMode;
   aiEnabled: boolean | null;
+  leadVerdict: LeadVerdict | null;
   lastMessageAt: string | null;
   contact: ChatContact;
   channel: ChannelRef | null;
@@ -50,6 +63,8 @@ export interface ConversationDetail {
   unreadCount: number;
   aiMode: AiMode;
   aiEnabled: boolean | null;
+  leadVerdict: LeadVerdict | null;
+  qualification: LeadQualification | null;
   evolutionInstanceId: string;
   channel: ChannelRef | null;
   contact: ChatContact;

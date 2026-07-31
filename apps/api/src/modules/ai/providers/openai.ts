@@ -24,6 +24,7 @@ export const openAiProvider: LlmProvider = {
         temperature: req.temperature,
         max_tokens: req.maxTokens,
         messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+        ...(req.json ? { response_format: { type: 'json_object' } } : {}),
       }),
     });
 
