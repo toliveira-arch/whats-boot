@@ -23,18 +23,27 @@ export type RdConfigInput = Partial<
   Pick<RdIntegration, 'enabled' | 'channelId' | 'openingMessage' | 'handoffToSdr'>
 >;
 
-export function getRd(): Promise<RdIntegration> {
-  return authFetch('/integrations/rdstation');
+function companyQuery(companyId?: string | null): string {
+  return companyId ? `?companyId=${encodeURIComponent(companyId)}` : '';
 }
 
-export function saveRd(input: RdConfigInput): Promise<RdIntegration> {
-  return authFetch('/integrations/rdstation', { method: 'PUT', body: JSON.stringify(input) });
+export function getRd(companyId?: string | null): Promise<RdIntegration> {
+  return authFetch(`/integrations/rdstation${companyQuery(companyId)}`);
 }
 
-export function regenerateRd(): Promise<RdIntegration> {
-  return authFetch('/integrations/rdstation/regenerate', { method: 'POST' });
+export function saveRd(input: RdConfigInput, companyId?: string | null): Promise<RdIntegration> {
+  return authFetch(`/integrations/rdstation${companyQuery(companyId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
 }
 
-export function rdEvents(): Promise<RdEvent[]> {
-  return authFetch('/integrations/rdstation/events');
+export function regenerateRd(companyId?: string | null): Promise<RdIntegration> {
+  return authFetch(`/integrations/rdstation/regenerate${companyQuery(companyId)}`, {
+    method: 'POST',
+  });
+}
+
+export function rdEvents(companyId?: string | null): Promise<RdEvent[]> {
+  return authFetch(`/integrations/rdstation/events${companyQuery(companyId)}`);
 }

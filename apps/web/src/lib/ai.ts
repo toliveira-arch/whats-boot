@@ -122,12 +122,19 @@ export interface CredentialsInfo {
   credentials: { id: string; provider: string; isActive: boolean; baseUrl: string | null }[];
 }
 
-export function getAgent(): Promise<AiAgent | null> {
-  return authFetch('/ai/agent');
+function companyQuery(companyId?: string | null): string {
+  return companyId ? `?companyId=${encodeURIComponent(companyId)}` : '';
 }
 
-export function saveAgent(input: AiAgentInput): Promise<AiAgent> {
-  return authFetch('/ai/agent', { method: 'PUT', body: JSON.stringify(input) });
+export function getAgent(companyId?: string | null): Promise<AiAgent | null> {
+  return authFetch(`/ai/agent${companyQuery(companyId)}`);
+}
+
+export function saveAgent(input: AiAgentInput, companyId?: string | null): Promise<AiAgent> {
+  return authFetch(`/ai/agent${companyQuery(companyId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
 }
 
 export function listCredentials(): Promise<CredentialsInfo> {
@@ -145,6 +152,12 @@ export function setCredential(
   });
 }
 
-export function testAgent(userMessage: string): Promise<{ content: string }> {
-  return authFetch('/ai/test', { method: 'POST', body: JSON.stringify({ userMessage }) });
+export function testAgent(
+  userMessage: string,
+  companyId?: string | null,
+): Promise<{ content: string }> {
+  return authFetch(`/ai/test${companyQuery(companyId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ userMessage }),
+  });
 }

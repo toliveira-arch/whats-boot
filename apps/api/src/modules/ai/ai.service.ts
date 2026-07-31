@@ -63,12 +63,33 @@ export interface AgentConfigInput {
   qualification?: unknown;
 }
 
-export async function getAgent() {
-  return prisma.aiAgent.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
+/**
+ * Retorna o agente de uma empresa (cliente). Cada empresa tem a sua própria
+ * configuração de IA. `companyId` null/undefined = agente padrão do tenant
+ * (usado como fallback quando a empresa ainda não configurou o seu).
+ */
+export async function getAgent(companyId?: string | null) {
+  return prisma.aiAgent.findFirst({
+    where: { deletedAt: null, companyId: companyId ?? null },
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
-export async function upsertAgent(input: AgentConfigInput) {
-  const existing = await getAgent();
+/** Resolve o agente de uma conversa: o da empresa, senão o padrão do tenant. */
+async function resolveAgentForCompany(companyId: string | null) {
+  return (await getAgent(companyId)) ?? (await getAgent(null));
+}
+
+export async function upsertAgent(companyId: string | null, input: AgentConfigInput) {
+  // Garante que a empresa pertence ao tenant (o FK também protege na criação).
+  if (companyId) {
+    const company = await prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!company) throw new HttpError(404, 'Empresa não encontrada');
+  }
+  const existing = await getAgent(companyId);
   const data = {
     name: input.name ?? 'Agente IA',
     provider: input.provider,
@@ -96,6 +117,7 @@ export async function upsertAgent(input: AgentConfigInput) {
   return prisma.aiAgent.create({
     data: {
       tenantId: tenantId(),
+      companyId: companyId ?? null,
       name: data.name,
       provider: input.provider ?? 'OPENAI',
       model: input.model ?? 'gpt-4o-mini',
@@ -216,7 +238,8 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   if (!conversation.evolutionInstance.aiEnabled) return { skipped: 'instance-ai-off' };
   if (conversation.aiEnabled === false) return { skipped: 'conversation-ai-off' };
 
-  const agent = await getAgent();
+  // Cada empresa tem o seu agente; usa o padrão do tenant como fallback.
+  const agent = await resolveAgentForCompany(conversation.companyId);
   if (!agent || !agent.isActive) return { skipped: 'agent-disabled' };
 
   // Modo efetivo: a conversa pode sobrescrever o modo global do agente.
@@ -630,8 +653,11 @@ export async function generateReplyJob(job: {
 }
 
 /** Teste rápido de configuração/credencial (botão "testar" na tela de IA). */
-export async function testGenerate(input: { userMessage: string }): Promise<{ content: string }> {
-  const agent = await getAgent();
+export async function testGenerate(input: {
+  userMessage: string;
+  companyId?: string | null;
+}): Promise<{ content: string }> {
+  const agent = await resolveAgentForCompany(input.companyId ?? null);
   if (!agent) throw new HttpError(400, 'Configure o agente de IA primeiro');
   const credential = await prisma.aiCredential.findFirst({
     where: { provider: agent.provider, isActive: true, deletedAt: null },

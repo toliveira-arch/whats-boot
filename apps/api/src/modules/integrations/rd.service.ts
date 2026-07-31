@@ -20,12 +20,27 @@ export function rdWebhookUrl(token: string): string {
   return `${env.API_PUBLIC_URL.replace(/\/$/, '')}/api/integrations/rdstation/webhook/${token}`;
 }
 
-/** Retorna a integração do tenant, criando uma (desligada) na primeira vez. */
-export async function getIntegration() {
-  const existing = await prisma.rdIntegration.findFirst({ where: { deletedAt: null } });
+/**
+ * Retorna a integração de uma empresa (cliente), criando uma (desligada) na
+ * primeira vez. Cada empresa tem o seu próprio token/URL de webhook, para que
+ * o RD Station de cada cliente dispare no canal certo. `companyId` null =
+ * integração padrão do tenant.
+ */
+export async function getIntegration(companyId?: string | null) {
+  const cid = companyId ?? null;
+  if (cid) {
+    const company = await prisma.company.findFirst({
+      where: { id: cid, deletedAt: null },
+      select: { id: true },
+    });
+    if (!company) throw new HttpError(404, 'Empresa não encontrada');
+  }
+  const existing = await prisma.rdIntegration.findFirst({
+    where: { deletedAt: null, companyId: cid },
+  });
   if (existing) return existing;
   return prisma.rdIntegration.create({
-    data: { tenantId: tenantId(), webhookToken: newToken() },
+    data: { tenantId: tenantId(), companyId: cid, webhookToken: newToken() },
   });
 }
 
@@ -36,8 +51,8 @@ export interface RdConfigInput {
   handoffToSdr?: boolean;
 }
 
-export async function upsertIntegration(input: RdConfigInput) {
-  const integ = await getIntegration();
+export async function upsertIntegration(companyId: string | null, input: RdConfigInput) {
+  const integ = await getIntegration(companyId);
   return prisma.rdIntegration.update({
     where: { id: integ.id },
     data: {
@@ -49,16 +64,18 @@ export async function upsertIntegration(input: RdConfigInput) {
   });
 }
 
-export async function regenerateToken() {
-  const integ = await getIntegration();
+export async function regenerateToken(companyId: string | null) {
+  const integ = await getIntegration(companyId);
   return prisma.rdIntegration.update({
     where: { id: integ.id },
     data: { webhookToken: newToken() },
   });
 }
 
-export async function listEvents() {
+export async function listEvents(companyId: string | null) {
+  const integ = await getIntegration(companyId);
   return prisma.rdLeadEvent.findMany({
+    where: { integrationId: integ.id },
     orderBy: { createdAt: 'desc' },
     take: 20,
     select: {
@@ -153,7 +170,8 @@ export async function handleRdWebhook(
       return { status: 'skipped', detail: 'no-phone' };
     }
 
-    // Canal: o configurado, senão a primeira instância disponível.
+    // Canal: o configurado, senão a primeira instância da empresa da integração
+    // (ou qualquer instância, se a integração não estiver vinculada a empresa).
     const channel =
       (integ.channelId
         ? await prisma.evolutionInstance.findFirst({
@@ -161,7 +179,7 @@ export async function handleRdWebhook(
           })
         : null) ??
       (await prisma.evolutionInstance.findFirst({
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...(integ.companyId ? { companyId: integ.companyId } : {}) },
         orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
       }));
 

@@ -3,6 +3,7 @@ import * as ai from '../lib/ai';
 import type { AiAgent, QualConfig } from '../lib/ai';
 import { emptyQualConfig } from '../lib/ai';
 import { QualificationEditor } from '../components/QualificationEditor';
+import { listCompanies, type Company } from '../lib/companies';
 import { ApiError } from '../lib/api';
 
 const EMPTY: ai.AiAgentInput = {
@@ -38,26 +39,50 @@ export function AiSettings() {
   const [creds, setCreds] = useState<ai.CredentialsInfo | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyId, setCompanyId] = useState<string>('');
+
   const [credProvider, setCredProvider] = useState('OPENAI');
   const [credKey, setCredKey] = useState('');
   const [testMsg, setTestMsg] = useState('Olá, quero saber o preço.');
   const [testOut, setTestOut] = useState<string | null>(null);
 
+  // Carrega empresas e credenciais uma vez.
   useEffect(() => {
-    ai.getAgent()
-      .then((a: AiAgent | null) => {
-        if (a) {
-          setForm(a);
-          setForbidden(a.forbiddenWords.join(', '));
-          setRequired(a.requiredWords.join(', '));
-          if (a.qualification) setQual({ ...emptyQualConfig(), ...a.qualification });
-        }
+    listCompanies()
+      .then((list) => {
+        setCompanies(list);
+        const first = list[0];
+        if (first) setCompanyId((cur) => cur || first.id);
       })
       .catch(() => undefined);
     ai.listCredentials()
       .then(setCreds)
       .catch(() => undefined);
   }, []);
+
+  // Recarrega a configuração sempre que a empresa selecionada muda.
+  useEffect(() => {
+    if (!companyId) return;
+    ai.getAgent(companyId)
+      .then((a: AiAgent | null) => {
+        if (a) {
+          setForm(a);
+          setForbidden(a.forbiddenWords.join(', '));
+          setRequired(a.requiredWords.join(', '));
+          setQual(
+            a.qualification ? { ...emptyQualConfig(), ...a.qualification } : emptyQualConfig(),
+          );
+        } else {
+          // Empresa ainda sem agente: começa do padrão.
+          setForm(EMPTY);
+          setForbidden('');
+          setRequired('');
+          setQual(emptyQualConfig());
+        }
+      })
+      .catch(() => undefined);
+  }, [companyId]);
 
   function set<K extends keyof ai.AiAgentInput>(key: K, value: ai.AiAgentInput[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -66,13 +91,20 @@ export function AiSettings() {
   async function saveAgent(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
+    if (!companyId) {
+      setMsg('Selecione uma empresa primeiro');
+      return;
+    }
     try {
-      await ai.saveAgent({
-        ...form,
-        forbiddenWords: csv(forbidden),
-        requiredWords: csv(required),
-        qualification: qual,
-      });
+      await ai.saveAgent(
+        {
+          ...form,
+          forbiddenWords: csv(forbidden),
+          requiredWords: csv(required),
+          qualification: qual,
+        },
+        companyId,
+      );
       setMsg('Configuração salva ✅');
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Erro ao salvar');
@@ -95,7 +127,7 @@ export function AiSettings() {
   async function runTest() {
     setTestOut('…');
     try {
-      const r = await ai.testAgent(testMsg);
+      const r = await ai.testAgent(testMsg, companyId);
       setTestOut(r.content);
     } catch (err) {
       setTestOut(err instanceof ApiError ? err.message : 'Erro no teste');
@@ -112,6 +144,31 @@ export function AiSettings() {
           {msg}
         </div>
       )}
+
+      <div className="card-form">
+        <h2>Empresa (cliente)</h2>
+        <p className="sub">
+          A configuração de IA é individual por empresa. Selecione a empresa para editar o agente
+          dela.
+        </p>
+        {companies.length === 0 ? (
+          <p className="sub">
+            Nenhuma empresa cadastrada. Cadastre uma empresa no menu <strong>Empresas</strong>{' '}
+            primeiro.
+          </p>
+        ) : (
+          <label className="field">
+            <span>Empresa</span>
+            <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
 
       <form className="card-form" onSubmit={saveAgent}>
         <h2>Agente</h2>
@@ -242,6 +299,10 @@ export function AiSettings() {
 
       <form className="card-form" onSubmit={saveCred}>
         <h2>Credenciais dos provedores</h2>
+        <p className="sub">
+          As chaves de API são compartilhadas por toda a conta (valem para todas as empresas). A
+          personalização por empresa é feita no agente e na qualificação acima.
+        </p>
         <p className="sub">
           Configurados: {configured.size ? Array.from(configured).join(', ') : 'nenhum'}
         </p>

@@ -19,20 +19,26 @@ function present(integ: {
   };
 }
 
-export const getRdController = asyncHandler(async (_req, res) => {
-  res.json(present(await rd.getIntegration()));
+/** Lê ?companyId=... da query (empresa selecionada no painel). */
+function companyIdOf(req: { query: Record<string, unknown> }): string | null {
+  const v = req.query.companyId;
+  return typeof v === 'string' && v.trim() ? v : null;
+}
+
+export const getRdController = asyncHandler(async (req, res) => {
+  res.json(present(await rd.getIntegration(companyIdOf(req))));
 });
 
 export const updateRdController = asyncHandler(async (req, res) => {
-  res.json(present(await rd.upsertIntegration(req.body)));
+  res.json(present(await rd.upsertIntegration(companyIdOf(req), req.body)));
 });
 
-export const regenerateRdController = asyncHandler(async (_req, res) => {
-  res.json(present(await rd.regenerateToken()));
+export const regenerateRdController = asyncHandler(async (req, res) => {
+  res.json(present(await rd.regenerateToken(companyIdOf(req))));
 });
 
-export const rdEventsController = asyncHandler(async (_req, res) => {
-  res.json(await rd.listEvents());
+export const rdEventsController = asyncHandler(async (req, res) => {
+  res.json(await rd.listEvents(companyIdOf(req)));
 });
 
 /** Rota PÚBLICA — RD Station chama aqui a cada novo lead. */

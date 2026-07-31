@@ -340,7 +340,7 @@ model Tenant {
 model RdIntegration {
   id             String    @id @default(cuid())
   tenantId       String
-  companyId      String?
+  companyId      String? // integração por empresa (cliente)
   enabled        Boolean   @default(false)
   webhookToken   String    @unique
   channelId      String? // EvolutionInstance que dispara as mensagens
