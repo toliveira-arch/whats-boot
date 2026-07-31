@@ -8,6 +8,7 @@ import { Chat } from './pages/Chat';
 import { Channels } from './pages/Channels';
 import { Monitor } from './pages/Monitor';
 import { AiSettings } from './pages/AiSettings';
+import { Integrations } from './pages/Integrations';
 
 function ProtectedLayout() {
   const { status } = useAuth();
@@ -35,6 +36,7 @@ export function App() {
         <Route path="/channels" element={<Channels />} />
         <Route path="/monitor" element={<Monitor />} />
         <Route path="/ai" element={<AiSettings />} />
+        <Route path="/integrations" element={<Integrations />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

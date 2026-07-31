@@ -19,6 +19,7 @@ import { messagesRouter } from './modules/evolution/messages.routes';
 import { webhookRouter } from './modules/evolution/webhook.routes';
 import { conversationsRouter, tagsRouter } from './modules/conversations/conversations.routes';
 import { aiRouter } from './modules/ai/ai.routes';
+import { integrationsRouter, rdWebhookRouter } from './modules/integrations/rd.routes';
 
 /** Monta a aplicação Express (infraestrutura — sem rotas de negócio). */
 export function createApp(): Express {
@@ -54,6 +55,9 @@ export function createApp(): Express {
   app.use('/api/conversations', conversationsRouter);
   app.use('/api/tags', tagsRouter);
   app.use('/api/ai', aiRouter);
+  // Webhook público do RD Station ANTES do router autenticado (mesmo base path).
+  app.use('/api/integrations', rdWebhookRouter);
+  app.use('/api/integrations', integrationsRouter);
 
   // Servir o site compilado (deploy single-service). Em dev, a pasta não existe
   // e o Vite serve a web separadamente.

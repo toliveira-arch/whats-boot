@@ -25,6 +25,9 @@ export function AppLayout() {
         <NavLink to="/ai" className={linkClass}>
           IA
         </NavLink>
+        <NavLink to="/integrations" className={linkClass}>
+          Integrações
+        </NavLink>
         <span className="nav-spacer" />
         <span className="sub">{profile?.user.name}</span>
         <button className="btn ghost" onClick={() => void logout()}>

@@ -1141,3 +1141,14 @@ h2 {
   background: #3d3312;
   color: #e6c84f;
 }
+
+.rd-steps {
+  margin: 4px 0 0 18px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rd-steps li {
+  list-style: decimal;
+}

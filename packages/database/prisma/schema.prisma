@@ -329,9 +329,49 @@ model Tenant {
   companySettings     CompanySettings[]
   contactTags         ContactTag[]
   conversationTags    ConversationTag[]
+  rdIntegrations      RdIntegration[]
+  rdLeadEvents        RdLeadEvent[]
 
   @@index([status])
   @@index([deletedAt])
+}
+
+/// Integração com RD Station: recebe novos leads via webhook e dispara WhatsApp.
+model RdIntegration {
+  id             String    @id @default(cuid())
+  tenantId       String
+  companyId      String?
+  enabled        Boolean   @default(false)
+  webhookToken   String    @unique
+  channelId      String? // EvolutionInstance que dispara as mensagens
+  openingMessage String    @default("Olá {{nome}}, tudo bem?")
+  handoffToSdr   Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+/// Log de leads recebidos do RD Station (diagnóstico).
+model RdLeadEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  integrationId String
+  name          String?
+  phone         String?
+  email         String?
+  status        String // RECEIVED | SENT | SKIPPED | FAILED
+  detail        String?
+  payload       Json?
+  createdAt     DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([integrationId])
 }
 
 model Plan {
