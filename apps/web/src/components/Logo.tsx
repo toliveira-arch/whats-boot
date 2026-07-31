@@ -1,7 +1,8 @@
 /**
- * Marca ZAPmoon. O "A" é o símbolo (seta/agulha roxa apontando para cima com a
- * ponta de losango abaixo). Renderizado inline em SVG para ficar nítido em
- * qualquer tamanho e herdar a cor do texto ao redor (via currentColor).
+ * Marca ZAPmoon. O "A" é o símbolo: triângulo roxo apontando para cima com o
+ * contorno interno em "A" (sem barra) e a ponta de losango logo abaixo.
+ * Renderizado inline em SVG para ficar nítido em qualquer tamanho; o texto
+ * herda a cor ao redor (branco na nav, escuro no login).
  */
 export function Logo({ height = 26 }: { height?: number }) {
   return (
@@ -9,25 +10,15 @@ export function Logo({ height = 26 }: { height?: number }) {
       <span className="brand-word">Z</span>
       <svg
         className="brand-mark"
-        viewBox="0 0 40 72"
-        width={height * 0.62}
-        height={height}
+        viewBox="0 0 44 74"
+        width={(height * 1.32 * 44) / 74}
+        height={height * 1.32}
         aria-hidden="true"
       >
-        <defs>
-          <linearGradient id="zap-a" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#a855f7" />
-            <stop offset="1" stopColor="#7c3aed" />
-          </linearGradient>
-        </defs>
-        {/* Triângulo do "A" com fenda central (evenodd) formando as duas pernas */}
-        <path
-          fill="url(#zap-a)"
-          fillRule="evenodd"
-          d="M20 3 L38 51 L2 51 Z M16.5 51 L16.5 30 L23.5 30 L23.5 51 Z"
-        />
+        {/* Triângulo do "A" com o contra-forma (counter) triangular formando as pernas */}
+        <path fill="#7a29e0" fillRule="evenodd" d="M22 2 L42 52 L2 52 Z M22 23 L15 52 L29 52 Z" />
         {/* Ponta de losango abaixo da base */}
-        <path fill="url(#zap-a)" d="M11 54 L29 54 L20 70 Z" />
+        <path fill="#7a29e0" d="M13 56 L31 56 L22 72 Z" />
       </svg>
       <span className="brand-word">Pmoon</span>
     </span>
