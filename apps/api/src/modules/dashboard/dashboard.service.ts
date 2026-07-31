@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { listRecentActivity } from '../events/events.service';
 
 export interface TrendKpi {
   value: number;
@@ -191,8 +192,10 @@ export async function getMetrics(days = 7, companyId?: string | null): Promise<D
     }))
     .sort((a, b) => b.count - a.count);
 
-  // Atividade recente: derivada do estado real das conversas mais recentes.
-  const recentActivity = recentRows.map((r) => {
+  // Atividade recente: preferimos o log de eventos real (linha do tempo). Se
+  // ainda não houver eventos (base antiga), caímos no estado atual das conversas.
+  const eventActivity = await listRecentActivity(companyId ?? null, 8);
+  const derivedActivity = recentRows.map((r) => {
     const q = r.qualification as { campaignName?: string; reasons?: unknown } | null;
     const contactName = r.contact?.name ?? r.contact?.pushName ?? 'Contato';
     const company = r.company?.name ?? '';
@@ -216,6 +219,7 @@ export async function getMetrics(days = 7, companyId?: string | null): Promise<D
     }
     return { id: r.id, type, title, subtitle, at: r.updatedAt.toISOString() };
   });
+  const recentActivity = eventActivity.length ? eventActivity : derivedActivity;
 
   // Série de mensagens (entrada/saída) por dia — últimos 7 dias.
   const dayDefs: { date: string; start: Date; end: Date }[] = [];

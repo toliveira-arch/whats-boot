@@ -1,5 +1,84 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { AiMode, ChatNote, ChatTag, ConversationDetail } from '../lib/chat';
+import { listConversationEvents, type ConversationEvent } from '../lib/events';
+import { getSocket } from '../lib/socket';
+
+const EVENT_EMOJI: Record<string, string> = {
+  qualified: '✅',
+  disqualified: '⛔',
+  in_progress: '📈',
+  handoff: '🤝',
+  ai: '🤖',
+  conversation: '💬',
+};
+
+function relTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'ontem' : `há ${d} dias`;
+}
+
+function Timeline({ conversationId }: { conversationId: string }) {
+  const [events, setEvents] = useState<ConversationEvent[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    listConversationEvents(conversationId)
+      .then((e) => active && setEvents(e))
+      .catch(() => undefined);
+
+    const socket = getSocket();
+    const onActivity = (a: { conversationId?: string } & Partial<ConversationEvent>) => {
+      const id = a.id;
+      if (a.conversationId !== conversationId || !id) return;
+      const next: ConversationEvent = {
+        id,
+        type: a.type ?? '',
+        kind: a.kind ?? 'conversation',
+        title: a.title ?? '',
+        detail: null,
+        actorName: null,
+        at: a.at ?? new Date().toISOString(),
+      };
+      setEvents((prev) => (prev.some((e) => e.id === id) ? prev : [next, ...prev]));
+    };
+    socket?.on('activity.created', onActivity);
+    return () => {
+      active = false;
+      socket?.off('activity.created', onActivity);
+    };
+  }, [conversationId]);
+
+  return (
+    <div className="cp-section">
+      <h3>Linha do tempo</h3>
+      {events.length === 0 ? (
+        <span className="sub">Sem eventos ainda.</span>
+      ) : (
+        <ul className="cp-timeline">
+          {events.map((e) => (
+            <li key={e.id}>
+              <span className="cp-tl-ico">{EVENT_EMOJI[e.kind] ?? '•'}</span>
+              <div className="cp-tl-body">
+                <span className="cp-tl-title">{e.title}</span>
+                <span className="sub">
+                  {relTime(e.at)}
+                  {e.actorName ? ` · ${e.actorName}` : ''}
+                  {e.detail ? ` · ${e.detail}` : ''}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   conversation: ConversationDetail;
@@ -131,6 +210,8 @@ export function ContactPanel({
           🧹 Limpar memória (teste)
         </button>
       </div>
+
+      <Timeline conversationId={conversation.id} />
 
       <div className="cp-section">
         <h3>Etiquetas</h3>

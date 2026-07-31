@@ -3,6 +3,7 @@ import { logger } from '../../lib/logger';
 import { broadcastToTenant } from '../../realtime/emitter';
 import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { generateReplyJob } from '../ai/ai.service';
+import { recordEvent } from '../events/events.service';
 import {
   extractText,
   mapAckStatus,
@@ -60,7 +61,7 @@ async function getOrCreateConversation(channel: Channel, contactId: string, remo
   });
   if (open) return open;
 
-  return prisma.conversation.create({
+  const created = await prisma.conversation.create({
     data: {
       tenantId: channel.tenantId,
       companyId: channel.companyId,
@@ -70,6 +71,12 @@ async function getOrCreateConversation(channel: Channel, contactId: string, remo
       status: 'OPEN',
     },
   });
+  await recordEvent({
+    tenantId: channel.tenantId,
+    conversationId: created.id,
+    type: 'CREATED',
+  });
+  return created;
 }
 
 async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPayload) {

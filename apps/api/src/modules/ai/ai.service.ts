@@ -4,6 +4,7 @@ import { logger } from '../../lib/logger';
 import { encryptSecret, decryptSecret } from '../../lib/crypto';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
+import { recordEvent } from '../events/events.service';
 import { getProvider, supportedProviders, type LlmMessage, type LlmProvider } from './providers';
 import {
   detectByKeywords,
@@ -384,6 +385,7 @@ async function runQualification(input: {
     id: string;
     companyId: string;
     evolutionInstanceId: string;
+    leadVerdict: string | null;
     contact: {
       name: string | null;
       pushName: string | null;
@@ -509,6 +511,10 @@ async function runQualification(input: {
   const script = effectiveScript(config, campaign);
   const complete = isComplete(script, mergedCollected);
 
+  // Detecta avanço no roteiro: número de campos preenchidos aumentou.
+  const filledBefore = script.filter((f) => hasVal(prevCollected[f.key])).length;
+  const filledAfter = script.filter((f) => hasVal(mergedCollected[f.key])).length;
+
   let verdict: LeadVerdict = 'IN_PROGRESS';
   let outboundText = out.reply?.trim() || '';
   let reasons: string[] = [];
@@ -548,6 +554,34 @@ async function runQualification(input: {
     },
   });
   broadcastToTenant(tid, 'lead.updated', { conversationId, verdict, qualification: qualState });
+
+  // Log de eventos (linha do tempo real): transições do lead.
+  const prevVerdict = conversation.leadVerdict ?? 'IN_PROGRESS';
+  if (verdict === 'QUALIFIED' && prevVerdict !== 'QUALIFIED') {
+    await recordEvent({
+      tenantId: tid,
+      conversationId,
+      type: 'LEAD_QUALIFIED',
+      data: { campaignName: campaign?.name ?? null, summary: out.summary ?? null },
+    });
+  } else if (verdict === 'DISQUALIFIED' && prevVerdict !== 'DISQUALIFIED') {
+    await recordEvent({
+      tenantId: tid,
+      conversationId,
+      type: 'LEAD_DISQUALIFIED',
+      data: { reason: reasons[0] ?? null, reasons },
+    });
+  } else if (verdict === 'IN_PROGRESS' && filledAfter > filledBefore) {
+    await recordEvent({
+      tenantId: tid,
+      conversationId,
+      type: 'LEAD_ADVANCED',
+      data: { filled: filledAfter, total: script.length },
+    });
+  }
+  if (pause) {
+    await recordEvent({ tenantId: tid, conversationId, type: 'HANDOFF' });
+  }
 
   // Notifica o closer da empresa quando o lead é qualificado (MQL).
   if (verdict === 'QUALIFIED' && config.notifyCloser) {

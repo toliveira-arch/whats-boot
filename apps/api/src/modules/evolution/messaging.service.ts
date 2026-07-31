@@ -5,6 +5,7 @@ import { broadcastToTenant } from '../../realtime/emitter';
 import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { logger } from '../../lib/logger';
 import { createEvolutionClient, type SendMediaBody } from './evolution.client';
+import { recordEvent } from '../events/events.service';
 
 type MediaType = SendMediaBody['mediatype'];
 
@@ -77,9 +78,9 @@ async function resolveContactAndConversation(
     },
     orderBy: { createdAt: 'desc' },
   });
-  const conversation =
-    open ??
-    (await prisma.conversation.create({
+  let conversation = open;
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
       data: {
         tenantId: channel.tenantId,
         companyId: channel.companyId,
@@ -88,7 +89,13 @@ async function resolveContactAndConversation(
         waRemoteJid: waJid,
         status: 'OPEN',
       },
-    }));
+    });
+    await recordEvent({
+      tenantId: channel.tenantId,
+      conversationId: conversation.id,
+      type: 'CREATED',
+    });
+  }
 
   return { contact, conversation };
 }

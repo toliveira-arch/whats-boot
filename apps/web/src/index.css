@@ -717,6 +717,38 @@ h2 {
   margin-bottom: 4px;
 }
 
+/* ---- Linha do tempo (log de eventos) ---- */
+.cp-timeline {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cp-timeline li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  position: relative;
+}
+.cp-tl-ico {
+  flex: none;
+  width: 22px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.cp-tl-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cp-tl-title {
+  font-size: 13px;
+  color: var(--text);
+}
+
 /* ===================== Configurações de IA ===================== */
 .settings {
   max-width: 840px;

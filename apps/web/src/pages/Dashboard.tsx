@@ -188,6 +188,8 @@ const ACT_ICON: Record<string, { icon: IconName; tone: string }> = {
   qualified: { icon: 'check', tone: 'ok' },
   disqualified: { icon: 'x', tone: 'err' },
   in_progress: { icon: 'trending', tone: 'accent' },
+  handoff: { icon: 'headset', tone: 'teal' },
+  ai: { icon: 'chat', tone: 'accent' },
   conversation: ACT_FALLBACK,
 };
 

@@ -2,6 +2,7 @@ import { prisma, getTenantContext, Prisma } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
+import { recordEvent, listConversationEvents } from '../events/events.service';
 
 function currentTenantId(): string {
   const tenantId = getTenantContext()?.tenantId;
@@ -99,6 +100,12 @@ async function requireConversation(conversationId: string) {
   });
   if (!conversation) throw new HttpError(404, 'Conversa não encontrada');
   return conversation;
+}
+
+/** Linha do tempo (log de eventos) de uma conversa. */
+export async function getConversationEvents(conversationId: string) {
+  await requireConversation(conversationId);
+  return listConversationEvents(conversationId);
 }
 
 export async function getConversation(conversationId: string) {
@@ -218,7 +225,7 @@ export interface UpdateConversationInput {
 }
 
 export async function updateConversation(conversationId: string, patch: UpdateConversationInput) {
-  await requireConversation(conversationId);
+  const before = await requireConversation(conversationId);
   const updated = await prisma.conversation.update({
     where: { id: conversationId },
     data: {
@@ -232,6 +239,29 @@ export async function updateConversation(conversationId: string, patch: UpdateCo
       ...(patch.aiEnabled !== undefined ? { aiEnabled: patch.aiEnabled } : {}),
     },
   });
+
+  // Log de eventos: registra as transições feitas manualmente.
+  if (patch.status && patch.status !== before.status) {
+    if (patch.status === 'CLOSED') await recordEvent({ conversationId, type: 'CLOSED' });
+    else if (before.status === 'CLOSED') await recordEvent({ conversationId, type: 'REOPENED' });
+    else
+      await recordEvent({
+        conversationId,
+        type: 'STATUS_CHANGED',
+        data: { from: before.status, to: patch.status },
+      });
+  }
+  if (patch.assignedToId !== undefined && patch.assignedToId !== before.assignedToId) {
+    await recordEvent({
+      conversationId,
+      type: patch.assignedToId ? 'ASSIGNED' : 'UNASSIGNED',
+      actorMembershipId: patch.assignedToId ?? null,
+    });
+  }
+  if (patch.aiEnabled !== undefined && patch.aiEnabled !== before.aiEnabled) {
+    await recordEvent({ conversationId, type: patch.aiEnabled ? 'AI_ENABLED' : 'AI_DISABLED' });
+  }
+
   broadcastToTenant(currentTenantId(), 'conversation.updated', { conversationId });
   return {
     id: updated.id,
@@ -269,6 +299,7 @@ export async function resetConversation(conversationId: string) {
     },
   });
   const tenantId = currentTenantId();
+  await recordEvent({ tenantId, conversationId, type: 'MEMORY_RESET' });
   broadcastToTenant(tenantId, 'conversation.updated', { conversationId });
   broadcastToTenant(tenantId, 'lead.updated', {
     conversationId,

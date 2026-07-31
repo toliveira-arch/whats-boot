@@ -16,6 +16,7 @@ import {
   createTagController,
   getConversationController,
   listConversationsController,
+  listEventsController,
   listMessagesController,
   listNotesController,
   listTagsController,
@@ -42,6 +43,7 @@ conversationsRouter.use(authenticate, tenantContext);
 conversationsRouter.get('/', READ, listConversationsController);
 conversationsRouter.get('/:id', READ, getConversationController);
 conversationsRouter.get('/:id/messages', READ, listMessagesController);
+conversationsRouter.get('/:id/events', READ, listEventsController);
 conversationsRouter.post(
   '/:id/messages',
   WRITE,

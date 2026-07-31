@@ -26,6 +26,10 @@ export const listMessagesController = asyncHandler(async (req, res) => {
   res.json(await svc.listMessages(req.params.id!, cursor, limit));
 });
 
+export const listEventsController = asyncHandler(async (req, res) => {
+  res.json(await svc.getConversationEvents(req.params.id!));
+});
+
 export const sendMessageController = asyncHandler(async (req, res) => {
   const result = await svc.sendMessage(req.params.id!, {
     membershipId: req.auth!.membershipId,
