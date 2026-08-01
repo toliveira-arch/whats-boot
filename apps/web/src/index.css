@@ -877,6 +877,54 @@ h2 {
   font-size: 12px;
 }
 
+/* ===================== Follow-up ===================== */
+.fu-step {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--panel-2);
+}
+.fu-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.fu-badge {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.fu-after {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.fu-after input {
+  width: 70px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--text);
+}
+.fu-step textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+
 /* ===================== Configurações de IA ===================== */
 .settings {
   max-width: 840px;

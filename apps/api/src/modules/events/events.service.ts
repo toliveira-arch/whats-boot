@@ -47,6 +47,8 @@ function titleOf(type: EventType, data: Record<string, unknown>): string {
       return `Status: ${String(data.to ?? '—')}`;
     case 'MEMORY_RESET':
       return 'Memória reiniciada (teste)';
+    case 'FOLLOWUP_SENT':
+      return `Follow-up enviado${data.step ? ` (msg ${String(data.step)})` : ''}`;
     default:
       return String(type);
   }
@@ -67,6 +69,8 @@ function kindOf(type: EventType): string {
     case 'AI_ENABLED':
     case 'AI_DISABLED':
       return 'ai';
+    case 'FOLLOWUP_SENT':
+      return 'followup';
     default:
       return 'conversation';
   }

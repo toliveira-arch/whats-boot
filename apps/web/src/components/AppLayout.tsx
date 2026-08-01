@@ -37,6 +37,9 @@ export function AppLayout() {
         <NavLink to="/warmup" className={linkClass}>
           Aquecimento
         </NavLink>
+        <NavLink to="/followup" className={linkClass}>
+          Follow-up
+        </NavLink>
         <span className="nav-spacer" />
         <span className="sub nav-user">{profile?.role.name ?? profile?.user.name}</span>
         <button className="btn ghost" onClick={() => void logout()}>

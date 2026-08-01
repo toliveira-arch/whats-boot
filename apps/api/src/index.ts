@@ -8,6 +8,7 @@ import { prisma } from './lib/prisma';
 import { closeQueues } from './queues';
 import { resyncAllWebhooks } from './modules/evolution/channels.service';
 import { startWarmupScheduler, stopWarmupScheduler } from './modules/warmup/warmup.engine';
+import { startFollowUpScheduler, stopFollowUpScheduler } from './modules/followup/followup.engine';
 
 async function bootstrap(): Promise<void> {
   const app = createApp();
@@ -34,12 +35,15 @@ async function bootstrap(): Promise<void> {
     );
     // Agendador de aquecimento de chip (ticker em processo, sem Redis).
     startWarmupScheduler();
+    // Agendador de follow-up (cadência de reengajamento por empresa).
+    startFollowUpScheduler();
   });
 
   // Encerramento gracioso
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'encerrando...');
     stopWarmupScheduler();
+    stopFollowUpScheduler();
     io.close();
     httpServer.close();
     await closeQueues().catch(() => undefined);

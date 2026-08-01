@@ -178,6 +178,7 @@ enum ConversationEventType {
   LEAD_QUALIFIED
   LEAD_DISQUALIFIED
   MEMORY_RESET
+  FOLLOWUP_SENT
 }
 
 enum FollowUpStatus {
@@ -337,6 +338,7 @@ model Tenant {
   rdLeadEvents        RdLeadEvent[]
   warmupSessions      WarmupSession[]
   warmupAssets        WarmupAsset[]
+  followUpSequences   FollowUpSequence[]
 
   @@index([status])
   @@index([deletedAt])
@@ -400,6 +402,24 @@ model WarmupAsset {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+/// Cadência de follow-up por empresa: sequência de mensagens de reengajamento
+/// disparadas após N horas sem resposta do cliente (para/reinicia ao responder).
+model FollowUpSequence {
+  id        String    @id @default(cuid())
+  tenantId  String
+  companyId String
+  enabled   Boolean   @default(false)
+  steps     Json      @default("[]") // [{ afterHours, text, active }]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([companyId])
 }
 
 /// Log de leads recebidos do RD Station (diagnóstico).
