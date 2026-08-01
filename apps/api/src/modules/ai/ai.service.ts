@@ -584,7 +584,8 @@ async function runQualification(input: {
   }
 
   // Notifica o closer da empresa quando o lead é qualificado (MQL).
-  if (verdict === 'QUALIFIED' && config.notifyCloser) {
+  // Padrão LIGADO: só não notifica se o toggle foi explicitamente desligado.
+  if (verdict === 'QUALIFIED' && config.notifyCloser !== false) {
     await notifyCloser({ tid, conversation, config, collected: mergedCollected, out, qualState });
   }
 
@@ -614,6 +615,7 @@ async function runQualification(input: {
 async function notifyCloser(input: {
   tid: string;
   conversation: {
+    id: string;
     companyId: string;
     evolutionInstanceId: string;
     contact: {
@@ -635,7 +637,19 @@ async function notifyCloser(input: {
       select: { name: true, closerName: true, closerPhone: true },
     });
     const closerPhone = normalizeBrPhone(company?.closerPhone);
-    if (!closerPhone) return; // empresa sem closer configurado
+    if (!closerPhone) {
+      // Causa mais comum: a empresa DESTA conversa (do canal) não tem o
+      // telefone do closer preenchido no menu Empresas.
+      logger.warn(
+        {
+          companyId: conversation.companyId,
+          company: company?.name,
+          rawCloser: company?.closerPhone,
+        },
+        'closer não notificado: empresa sem telefone de closer válido',
+      );
+      return;
+    }
 
     const leadPhone = (
       conversation.contact.waJid ??
@@ -667,9 +681,18 @@ async function notifyCloser(input: {
       text,
       authorType: 'AI',
     });
-    logger.info({ companyId: conversation.companyId }, 'closer notificado sobre lead MQL');
+    logger.info(
+      { companyId: conversation.companyId, closerPhone },
+      'closer notificado sobre lead MQL',
+    );
+    await recordEvent({
+      tenantId: tid,
+      conversationId: conversation.id,
+      type: 'CLOSER_NOTIFIED',
+      data: { closer: company?.closerName ?? null },
+    });
   } catch (err) {
-    logger.error({ err }, 'falha ao notificar o closer');
+    logger.error({ err, companyId: conversation.companyId }, 'falha ao notificar o closer');
   }
 }
 

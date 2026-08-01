@@ -49,6 +49,8 @@ function titleOf(type: EventType, data: Record<string, unknown>): string {
       return 'Memória reiniciada (teste)';
     case 'FOLLOWUP_SENT':
       return `Follow-up enviado${data.step ? ` (msg ${String(data.step)})` : ''}`;
+    case 'CLOSER_NOTIFIED':
+      return 'Closer notificado (lead MQL)';
     default:
       return String(type);
   }
@@ -71,6 +73,8 @@ function kindOf(type: EventType): string {
       return 'ai';
     case 'FOLLOWUP_SENT':
       return 'followup';
+    case 'CLOSER_NOTIFIED':
+      return 'handoff';
     default:
       return 'conversation';
   }

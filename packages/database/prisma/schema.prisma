@@ -179,6 +179,7 @@ enum ConversationEventType {
   LEAD_DISQUALIFIED
   MEMORY_RESET
   FOLLOWUP_SENT
+  CLOSER_NOTIFIED
 }
 
 enum FollowUpStatus {
