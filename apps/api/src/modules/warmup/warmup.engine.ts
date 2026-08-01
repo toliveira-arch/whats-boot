@@ -411,44 +411,49 @@ export async function runBeat(session: SessionRow, config: WarmupConfig): Promis
 // ---------------------------------------------------------------------------
 
 let timer: NodeJS.Timeout | null = null;
+// Sessões com um loop de conversa em andamento (evita rodar em dobro).
+const activeRunners = new Set<string>();
 
-/** Executa uma passada: para cada sessão RUNNING, envia um beat se estiver na hora. */
-export async function tickWarmup(now = new Date()): Promise<void> {
-  const sessions = await runAsSystem(() =>
-    prisma.warmupSession.findMany({
-      where: { status: 'RUNNING', deletedAt: null },
-      select: {
-        id: true,
-        tenantId: true,
-        channelIds: true,
-        channelAId: true,
-        channelBId: true,
-        config: true,
-        lastBeatAt: true,
-        beatsToday: true,
-        beatsDate: true,
-        createdAt: true,
-      },
-    }),
-  );
+/**
+ * Conduz a conversa de UMA sessão enquanto a janela estiver ativa: envia uma
+ * mensagem, espera o intervalo aleatório (min–max s) e repete, alternando os
+ * chips do pool. Para quando a janela fecha, bate o teto do dia ou a sessão é
+ * pausada. Isso dá um fluxo contínuo e natural (não 1 msg por minuto).
+ */
+async function runSessionLoop(sessionId: string): Promise<void> {
+  if (activeRunners.has(sessionId)) return;
+  activeRunners.add(sessionId);
+  try {
+    for (;;) {
+      const s = await prisma.warmupSession.findFirst({
+        where: { id: sessionId, deletedAt: null },
+        select: {
+          id: true,
+          tenantId: true,
+          channelIds: true,
+          channelAId: true,
+          channelBId: true,
+          config: true,
+          beatsToday: true,
+          beatsDate: true,
+          createdAt: true,
+          status: true,
+        },
+      });
+      if (!s || s.status !== 'RUNNING') break;
 
-  for (const s of sessions) {
-    const config = parseConfig(s.config);
-    if (!isWindowActive(config, now)) continue;
+      const config = parseConfig(s.config);
+      const now = new Date();
+      if (!isWindowActive(config, now)) break;
 
-    const today = todayStr(now, config.timezone);
-    const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
-    const ageDays = Math.floor((now.getTime() - s.createdAt.getTime()) / 86_400_000);
-    if (beatsToday >= dailyCap(config, ageDays)) continue;
+      const today = todayStr(now, config.timezone);
+      const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
+      const ageDays = Math.floor((now.getTime() - s.createdAt.getTime()) / 86_400_000);
+      if (beatsToday >= dailyCap(config, ageDays)) break;
 
-    // Espaçamento humano: só envia se passou o intervalo (com jitter).
-    const elapsed = s.lastBeatAt ? (now.getTime() - s.lastBeatAt.getTime()) / 1000 : Infinity;
-    if (elapsed < config.minIntervalSec) continue;
-    if (elapsed < config.maxIntervalSec && Math.random() < 0.5) continue;
-
-    await runWithTenant(s.tenantId, async () => {
+      let sent = false;
       try {
-        const sent = await runBeat(
+        sent = await runBeat(
           {
             id: s.id,
             tenantId: s.tenantId,
@@ -458,16 +463,41 @@ export async function tickWarmup(now = new Date()): Promise<void> {
           },
           config,
         );
-        if (sent) {
-          await prisma.warmupSession.update({
-            where: { id: s.id },
-            data: { lastBeatAt: new Date(), beatsToday: beatsToday + 1, beatsDate: today },
-          });
-        }
       } catch (err) {
-        logger.error({ err, sessionId: s.id }, 'aquecimento: falha no beat');
+        logger.error({ err, sessionId }, 'aquecimento: falha no beat');
       }
-    });
+      // Não conseguiu enviar (ex.: chips desconectados) — para e tenta no próximo tick.
+      if (!sent) break;
+
+      await prisma.warmupSession.update({
+        where: { id: s.id },
+        data: { lastBeatAt: new Date(), beatsToday: beatsToday + 1, beatsDate: today },
+      });
+
+      const span = Math.max(config.maxIntervalSec, config.minIntervalSec) - config.minIntervalSec;
+      const waitSec = config.minIntervalSec + Math.random() * span;
+      await sleep(Math.max(3, waitSec) * 1000);
+    }
+  } finally {
+    activeRunners.delete(sessionId);
+  }
+}
+
+/** A cada minuto, garante que cada sessão RUNNING em janela ativa tenha um loop. */
+export async function tickWarmup(now = new Date()): Promise<void> {
+  const sessions = await runAsSystem(() =>
+    prisma.warmupSession.findMany({
+      where: { status: 'RUNNING', deletedAt: null },
+      select: { id: true, tenantId: true, config: true },
+    }),
+  );
+
+  for (const s of sessions) {
+    if (activeRunners.has(s.id)) continue;
+    if (!isWindowActive(parseConfig(s.config), now)) continue;
+    void runWithTenant(s.tenantId, () => runSessionLoop(s.id)).catch((err) =>
+      logger.error({ err, sessionId: s.id }, 'aquecimento: falha no loop'),
+    );
   }
 }
 
