@@ -75,6 +75,19 @@ function ConfigEditor({
   const num = (e: ChangeEvent<HTMLInputElement>) => Number(e.target.value);
   return (
     <div className="wu-config">
+      <label className="field">
+        <span>Fuso horário das janelas</span>
+        <select
+          value={config.timezone ?? 'America/Sao_Paulo'}
+          onChange={(e) => set('timezone', e.target.value)}
+        >
+          <option value="America/Sao_Paulo">Brasília (America/Sao_Paulo)</option>
+          <option value="America/Manaus">Manaus (America/Manaus)</option>
+          <option value="America/Rio_Branco">Acre (America/Rio_Branco)</option>
+          <option value="America/Noronha">Fernando de Noronha</option>
+          <option value="UTC">UTC</option>
+        </select>
+      </label>
       <h4>Janelas (dia e horário)</h4>
       <WindowsEditor windows={config.windows} onChange={(w) => set('windows', w)} />
 

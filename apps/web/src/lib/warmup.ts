@@ -21,6 +21,7 @@ export interface WarmupConfig {
   personaB?: string;
   phrases?: string[];
   veteranIds?: string[];
+  timezone?: string;
 }
 
 export interface WarmupChannel {

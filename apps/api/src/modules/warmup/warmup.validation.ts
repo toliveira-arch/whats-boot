@@ -22,6 +22,7 @@ const config = z
     personaB: z.string().max(500).optional(),
     phrases: z.array(z.string().max(300)).max(200).optional(),
     veteranIds: z.array(z.string()).max(50).optional(),
+    timezone: z.string().max(64).optional(),
   })
   .optional();
 

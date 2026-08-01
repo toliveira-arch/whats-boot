@@ -30,6 +30,8 @@ export interface WarmupConfig {
   phrases?: string[];
   /** Canais já aquecidos: têm prioridade para iniciar a conversa (puxam os novos). */
   veteranIds?: string[];
+  /** Fuso usado para avaliar as janelas de horário (padrão America/Sao_Paulo). */
+  timezone?: string;
 }
 
 export function defaultWarmupConfig(): WarmupConfig {
@@ -47,6 +49,7 @@ export function defaultWarmupConfig(): WarmupConfig {
     baseDailyMessages: 8,
     maxDailyMessages: 40,
     useAi: true,
+    timezone: 'America/Sao_Paulo',
     personaA: 'Amigável, curioso, fala de forma casual e breve.',
     personaB: 'Descontraído, bem-humorado, responde curto como no WhatsApp.',
     phrases: [
@@ -83,6 +86,7 @@ export function parseConfig(raw: unknown): WarmupConfig {
     personaB: c.personaB ?? d.personaB,
     phrases: Array.isArray(c.phrases) && c.phrases.length ? c.phrases : d.phrases,
     veteranIds: Array.isArray(c.veteranIds) ? c.veteranIds : [],
+    timezone: typeof c.timezone === 'string' && c.timezone ? c.timezone : d.timezone,
   };
 }
 
@@ -90,18 +94,58 @@ export function parseConfig(raw: unknown): WarmupConfig {
 // Janelas / limites
 // ---------------------------------------------------------------------------
 
-function hhmmNow(now: Date): string {
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+const WEEKDAY: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+/** Data/hora locais no fuso configurado (fallback: hora do servidor). */
+function localParts(
+  tz: string | undefined,
+  now: Date,
+): { day: number; hhmm: string; date: string } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz || 'America/Sao_Paulo',
+      hour12: false,
+      weekday: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(now);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+    let hour = get('hour');
+    if (hour === '24') hour = '00'; // alguns ambientes retornam 24h
+    return {
+      day: WEEKDAY[get('weekday')] ?? now.getDay(),
+      hhmm: `${hour.padStart(2, '0')}:${get('minute').padStart(2, '0')}`,
+      date: `${get('year')}-${get('month')}-${get('day')}`,
+    };
+  } catch {
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return { day: now.getDay(), hhmm, date: now.toISOString().slice(0, 10) };
+  }
 }
 
 export function isWindowActive(config: WarmupConfig, now: Date): boolean {
-  const day = now.getDay();
-  const hhmm = hhmmNow(now);
+  const { day, hhmm } = localParts(config.timezone, now);
   return config.windows.some((w) => w.days.includes(day) && hhmm >= w.start && hhmm <= w.end);
 }
 
-function todayStr(now: Date): string {
-  return now.toISOString().slice(0, 10);
+function todayStr(now: Date, tz?: string): string {
+  return localParts(tz, now).date;
+}
+
+/** Data local (yyyy-mm-dd) no fuso configurado — usada no contador diário. */
+export function currentDateInTz(tz?: string): string {
+  return localParts(tz, new Date()).date;
 }
 
 /** Teto de mensagens do dia considerando o ramp-up gradual. */
@@ -392,7 +436,7 @@ export async function tickWarmup(now = new Date()): Promise<void> {
     const config = parseConfig(s.config);
     if (!isWindowActive(config, now)) continue;
 
-    const today = todayStr(now);
+    const today = todayStr(now, config.timezone);
     const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
     const ageDays = Math.floor((now.getTime() - s.createdAt.getTime()) / 86_400_000);
     if (beatsToday >= dailyCap(config, ageDays)) continue;

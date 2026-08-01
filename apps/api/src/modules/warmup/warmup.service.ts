@@ -1,6 +1,7 @@
 import { prisma, getTenantContext, type Prisma } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
 import {
+  currentDateInTz,
   defaultWarmupConfig,
   parseConfig,
   resolvePool,
@@ -13,8 +14,6 @@ function tenantId(): string {
   if (!id) throw new HttpError(500, 'Contexto de tenant ausente');
   return id;
 }
-
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 // ---------------------------------------------------------------------------
 // Sessões
@@ -64,7 +63,7 @@ async function present(s: {
     status: s.status,
     config,
     lastBeatAt: s.lastBeatAt,
-    beatsToday: s.beatsDate === todayStr() ? s.beatsToday : 0,
+    beatsToday: s.beatsDate === currentDateInTz(config.timezone) ? s.beatsToday : 0,
     createdAt: s.createdAt,
   };
 }
@@ -158,7 +157,7 @@ export async function runNow(id: string) {
   const s = await prisma.warmupSession.findFirst({ where: { id, deletedAt: null } });
   if (!s) throw new HttpError(404, 'Sessão não encontrada');
   const config = parseConfig(s.config);
-  const today = todayStr();
+  const today = currentDateInTz(config.timezone);
   const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
   const sent = await runBeat(
     { id: s.id, tenantId: s.tenantId, channelIds: resolvePool(s), beatsToday, beatsDate: today },
