@@ -9,6 +9,7 @@ import {
   listCredentialsController,
   setCredentialController,
   testController,
+  testCloserController,
   upsertAgentController,
 } from './ai.controller';
 
@@ -25,3 +26,4 @@ aiRouter.get('/credentials', MANAGE, listCredentialsController);
 aiRouter.put('/credentials', MANAGE, validateBody(credentialSchema), setCredentialController);
 
 aiRouter.post('/test', MANAGE, validateBody(testSchema), testController);
+aiRouter.post('/test-closer', MANAGE, testCloserController);

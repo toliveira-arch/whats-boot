@@ -28,3 +28,7 @@ export const testController = asyncHandler(async (req, res) => {
     await ai.testGenerate({ userMessage: req.body.userMessage, companyId: companyIdOf(req) }),
   );
 });
+
+export const testCloserController = asyncHandler(async (req, res) => {
+  res.json(await ai.testCloser(companyIdOf(req)));
+});

@@ -696,6 +696,63 @@ async function notifyCloser(input: {
   }
 }
 
+/**
+ * Dispara um teste da notificação do closer (dados de exemplo), para validar o
+ * telefone/template sem precisar concluir uma qualificação inteira.
+ */
+export async function testCloser(companyId: string | null): Promise<{
+  sent: boolean;
+  closerPhone: string;
+  channelConnected: boolean;
+}> {
+  const tid = tenantId();
+  if (!companyId) throw new HttpError(400, 'Selecione uma empresa');
+  const company = await prisma.company.findFirst({
+    where: { id: companyId, deletedAt: null },
+    select: { name: true, closerName: true, closerPhone: true },
+  });
+  if (!company) throw new HttpError(404, 'Empresa não encontrada');
+  const closerPhone = normalizeBrPhone(company.closerPhone);
+  if (!closerPhone)
+    throw new HttpError(400, 'Esta empresa não tem WhatsApp de closer preenchido (menu Empresas).');
+
+  const channel = await prisma.evolutionInstance.findFirst({
+    where: { companyId, deletedAt: null },
+    orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, status: true },
+  });
+  if (!channel)
+    throw new HttpError(400, 'Esta empresa não tem canal (instância) para enviar a mensagem.');
+
+  const agent = await resolveAgentForCompany(companyId);
+  const qual = (agent?.qualification as unknown as QualConfig | null) ?? null;
+  const template = qual?.closerTemplate?.trim() || DEFAULT_CLOSER_TEMPLATE;
+  const text = renderTemplate(template, {
+    nome: 'Lead de Teste',
+    telefone: '5511999999999',
+    empresa: company.name,
+    faturamento: '50000',
+    ramo: 'Teste',
+    cnpj: '—',
+    decisor: 'Sim',
+    dor: 'Teste de disparo do closer',
+    resumo: 'Esta é uma mensagem de TESTE do disparo para o closer.',
+    campanha: '—',
+    interesse: 'Alto',
+    urgencia: 'Alta',
+    closer: company.closerName ?? '—',
+  });
+
+  await messaging.sendText({
+    tenantId: tid,
+    channelId: channel.id,
+    number: closerPhone,
+    text,
+    authorType: 'AI',
+  });
+  return { sent: true, closerPhone, channelConnected: channel.status === 'CONNECTED' };
+}
+
 /** Processa um job da fila ai.process dentro do contexto de tenant. */
 export async function generateReplyJob(job: {
   conversationId: string;

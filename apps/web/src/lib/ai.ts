@@ -161,3 +161,9 @@ export function testAgent(
     body: JSON.stringify({ userMessage }),
   });
 }
+
+export function testCloser(
+  companyId?: string | null,
+): Promise<{ sent: boolean; closerPhone: string; channelConnected: boolean }> {
+  return authFetch(`/ai/test-closer${companyQuery(companyId)}`, { method: 'POST' });
+}

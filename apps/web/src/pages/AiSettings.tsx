@@ -134,6 +134,23 @@ export function AiSettings() {
     }
   }
 
+  async function runCloserTest() {
+    setMsg(null);
+    if (!companyId) {
+      setMsg('Selecione uma empresa primeiro');
+      return;
+    }
+    try {
+      const r = await ai.testCloser(companyId);
+      setMsg(
+        `Disparo de teste enviado para o closer (${r.closerPhone})` +
+          (r.channelConnected ? ' ✅' : ' — atenção: o canal desta empresa não está conectado.'),
+      );
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Erro ao testar o closer');
+    }
+  }
+
   const configured = new Set(creds?.credentials.map((c) => c.provider) ?? []);
 
   return (
@@ -292,9 +309,19 @@ export function AiSettings() {
 
         <QualificationEditor value={qual} onChange={setQual} />
 
-        <button type="submit" className="btn">
-          Salvar agente e qualificação
-        </button>
+        <div className="row-actions" style={{ marginTop: 8 }}>
+          <button type="submit" className="btn">
+            Salvar agente e qualificação
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => void runCloserTest()}
+            title="Envia uma mensagem de teste para o WhatsApp do closer desta empresa"
+          >
+            Testar notificação do closer
+          </button>
+        </div>
       </form>
 
       <form className="card-form" onSubmit={saveCred}>
