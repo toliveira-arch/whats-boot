@@ -105,6 +105,64 @@ export function effectiveScript(config: QualConfig, campaign: QualCampaign | nul
   return campaign?.script?.length ? campaign.script : config.defaultScript;
 }
 
+/** Normaliza um identificador: minúsculo, sem acento, só alfanumérico. */
+function normKey(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+// Apelidos comuns que a IA costuma usar → chave canônica do roteiro padrão.
+const KEY_ALIASES: Record<string, string> = {
+  segmento: 'ramo',
+  ramosegmento: 'ramo',
+  nicho: 'ramo',
+  revenue: 'faturamento',
+  faturamentomensal: 'faturamento',
+  faturamentomedio: 'faturamento',
+  principaldor: 'dor',
+  dorprincipal: 'dor',
+  ehodecisor: 'decisor',
+  edecisor: 'decisor',
+  decisao: 'decisor',
+  temcnpj: 'cnpj',
+  possuicnpj: 'cnpj',
+};
+
+/**
+ * Remapeia as chaves de `collected` para as chaves canônicas do roteiro,
+ * casando por chave OU rótulo (ignorando acentos/maiúsculas) e por apelidos.
+ * Isso corrige quando a IA devolve "Segmento"/"Faturamento" em vez de
+ * "ramo"/"faturamento", que impedia o roteiro de ser considerado completo.
+ */
+export function canonicalizeCollected(
+  raw: Record<string, unknown> | null | undefined,
+  script: QualField[],
+): Record<string, unknown> {
+  const map = new Map<string, string>();
+  for (const f of script) {
+    map.set(normKey(f.key), f.key);
+    if (f.label) map.set(normKey(f.label), f.key);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw ?? {})) {
+    const nk = normKey(k);
+    let canonical = map.get(nk);
+    if (!canonical && KEY_ALIASES[nk]) {
+      canonical = map.get(normKey(KEY_ALIASES[nk])) ?? KEY_ALIASES[nk];
+    }
+    if (!canonical) canonical = k;
+    // Não sobrescreve um valor já preenchido com um vazio.
+    const cur = out[canonical];
+    const hasCur = cur !== undefined && cur !== null && String(cur).trim() !== '';
+    const hasNew = v !== undefined && v !== null && String(v).trim() !== '';
+    if (!hasCur || hasNew) out[canonical] = v;
+  }
+  return out;
+}
+
 /** Todos os campos obrigatórios do roteiro já foram coletados? */
 export function isComplete(script: QualField[], collected: Record<string, unknown>): boolean {
   return script

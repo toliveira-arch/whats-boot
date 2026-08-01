@@ -7,6 +7,7 @@ import * as messaging from '../evolution/messaging.service';
 import { recordEvent } from '../events/events.service';
 import { getProvider, supportedProviders, type LlmMessage, type LlmProvider } from './providers';
 import {
+  canonicalizeCollected,
   detectByKeywords,
   effectiveScript,
   evaluateGate,
@@ -435,7 +436,8 @@ async function runQualification(input: {
 
   // Próximos itens obrigatórios ainda não coletados (para forçar o avanço).
   const hasVal = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== '';
-  const missing = scriptForPrompt.filter((f) => f.required && !hasVal(prevCollected[f.key]));
+  const prevCanonForPrompt = canonicalizeCollected(prevCollected, scriptForPrompt);
+  const missing = scriptForPrompt.filter((f) => f.required && !hasVal(prevCanonForPrompt[f.key]));
   const nextField = missing[0];
 
   const sys = [
@@ -446,7 +448,8 @@ async function runQualification(input: {
       ? `CAMPANHAS possíveis (detecte pela conversa e pelos gatilhos):\n${campaignsDesc}`
       : '',
     `ROTEIRO a coletar (nesta ordem):\n${scriptDesc}`,
-    `DADOS JÁ COLETADOS (não pergunte de novo): ${JSON.stringify(prevCollected)}`,
+    `No campo "collected", use EXATAMENTE estas chaves (minúsculas, sem acento): ${scriptForPrompt.map((f) => f.key).join(', ')}.`,
+    `DADOS JÁ COLETADOS (não pergunte de novo): ${JSON.stringify(prevCanonForPrompt)}`,
     missing.length
       ? `AINDA FALTA COLETAR: ${missing.map((f) => f.label).join(', ')}. Nesta resposta, depois de validar o que o cliente disse, faça JÁ a próxima pergunta pendente${nextField ? `: "${nextField.question}"` : ''}.`
       : 'Todos os itens obrigatórios já foram coletados — faça o fechamento/encaminhamento, sem novas perguntas.',
@@ -506,13 +509,18 @@ async function runQualification(input: {
     return { skipped: 'provider-error' };
   }
 
-  const mergedCollected = { ...prevCollected, ...(out.collected ?? {}) };
   const campaign = resolveCampaign(config, out.campaignId) ?? prelimCampaign;
   const script = effectiveScript(config, campaign);
+  // Casa as chaves da IA com as do roteiro (tolerante a maiúsculas/acentos/apelidos).
+  const prevCanon = canonicalizeCollected(prevCollected, script);
+  const mergedCollected = canonicalizeCollected(
+    { ...prevCollected, ...(out.collected ?? {}) },
+    script,
+  );
   const complete = isComplete(script, mergedCollected);
 
   // Detecta avanço no roteiro: número de campos preenchidos aumentou.
-  const filledBefore = script.filter((f) => hasVal(prevCollected[f.key])).length;
+  const filledBefore = script.filter((f) => hasVal(prevCanon[f.key])).length;
   const filledAfter = script.filter((f) => hasVal(mergedCollected[f.key])).length;
 
   let verdict: LeadVerdict = 'IN_PROGRESS';
