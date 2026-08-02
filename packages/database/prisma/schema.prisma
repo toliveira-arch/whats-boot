@@ -340,6 +340,7 @@ model Tenant {
   warmupSessions      WarmupSession[]
   warmupAssets        WarmupAsset[]
   followUpSequences   FollowUpSequence[]
+  companyKnowledge    CompanyKnowledge[]
 
   @@index([status])
   @@index([deletedAt])
@@ -403,6 +404,25 @@ model WarmupAsset {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+/// Base de conhecimento / FAQ por empresa: a IA usa para responder dúvidas do
+/// cliente durante a conversa (além de qualificar).
+model CompanyKnowledge {
+  id        String    @id @default(cuid())
+  tenantId  String
+  companyId String
+  enabled   Boolean   @default(true)
+  notes     String    @default("") // texto livre: sobre a empresa/produto/regras
+  entries   Json      @default("[]") // [{ q, a }] perguntas frequentes
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([companyId])
 }
 
 /// Cadência de follow-up por empresa: sequência de mensagens de reengajamento

@@ -12,6 +12,7 @@ import { AiSettings } from './pages/AiSettings';
 import { Integrations } from './pages/Integrations';
 import { Warmup } from './pages/Warmup';
 import { FollowUp } from './pages/FollowUp';
+import { Knowledge } from './pages/Knowledge';
 
 function ProtectedLayout() {
   const { status } = useAuth();
@@ -43,6 +44,7 @@ export function App() {
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/warmup" element={<Warmup />} />
         <Route path="/followup" element={<FollowUp />} />
+        <Route path="/knowledge" element={<Knowledge />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

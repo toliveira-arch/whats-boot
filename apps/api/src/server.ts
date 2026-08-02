@@ -22,6 +22,7 @@ import { aiRouter } from './modules/ai/ai.routes';
 import { integrationsRouter, rdWebhookRouter } from './modules/integrations/rd.routes';
 import { warmupRouter } from './modules/warmup/warmup.routes';
 import { followupRouter } from './modules/followup/followup.routes';
+import { knowledgeRouter } from './modules/knowledge/knowledge.routes';
 
 /** Monta a aplicação Express (infraestrutura — sem rotas de negócio). */
 export function createApp(): Express {
@@ -62,6 +63,7 @@ export function createApp(): Express {
   app.use('/api/integrations', integrationsRouter);
   app.use('/api/warmup', warmupRouter);
   app.use('/api/followup', followupRouter);
+  app.use('/api/knowledge', knowledgeRouter);
 
   // Servir o site compilado (deploy single-service). Em dev, a pasta não existe
   // e o Vite serve a web separadamente.

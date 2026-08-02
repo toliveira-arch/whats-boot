@@ -5,6 +5,7 @@ import { encryptSecret, decryptSecret } from '../../lib/crypto';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
 import { recordEvent } from '../events/events.service';
+import { buildKnowledgePrompt } from '../knowledge/knowledge.service';
 import { getProvider, supportedProviders, type LlmMessage, type LlmProvider } from './providers';
 import {
   canonicalizeCollected,
@@ -266,6 +267,9 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   const apiKey = decryptSecret(credential.apiKeyEncrypted);
   const baseUrl = credential.baseUrl ?? undefined;
 
+  // Base de conhecimento / FAQ da empresa (para responder dúvidas).
+  const knowledge = await buildKnowledgePrompt(conversation.companyId);
+
   // Modo SDR: pré-qualificação de leads com roteiro/gate/campanhas.
   const qual = (agent.qualification as unknown as QualConfig | null) ?? null;
   if (qual?.enabled) {
@@ -278,6 +282,7 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
       baseUrl,
       effectiveMode,
       config: qual,
+      knowledge,
     });
   }
 
@@ -291,6 +296,7 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
 
   const messages: LlmMessage[] = [];
   const systemParts = [agent.systemPrompt ?? 'Você é um atendente prestativo e objetivo.'];
+  if (knowledge) systemParts.push(knowledge);
   if (agent.requiredWords.length) {
     systemParts.push(`Sempre que fizer sentido, mencione: ${agent.requiredWords.join(', ')}.`);
   }
@@ -401,8 +407,10 @@ async function runQualification(input: {
   baseUrl?: string;
   effectiveMode: string;
   config: QualConfig;
+  knowledge?: string;
 }): Promise<GenerateResult> {
-  const { tid, conversation, agent, provider, apiKey, baseUrl, effectiveMode, config } = input;
+  const { tid, conversation, agent, provider, apiKey, baseUrl, effectiveMode, config, knowledge } =
+    input;
   const conversationId = conversation.id;
 
   const prev =
@@ -444,6 +452,7 @@ async function runQualification(input: {
     agent.systemPrompt ?? 'Você é um SDR de atendimento, humano e cordial.',
     'Sua função é fazer a PRÉ-QUALIFICAÇÃO do lead conduzindo um roteiro, UMA pergunta por vez, de forma natural (nunca um questionário robótico). Não revele que existe um roteiro ou critérios.',
     'REGRAS DE CONDUÇÃO (siga sempre): 1) valide/agradeça brevemente a resposta anterior; 2) na MESMA mensagem, JÁ faça a PRÓXIMA pergunta do roteiro que ainda não foi respondida; 3) NUNCA termine a mensagem sem uma pergunta enquanto houver itens obrigatórios a coletar — não mande mensagens "sem saída" (ex.: só "muito obrigado!"); 4) só pare de perguntar quando TODOS os itens obrigatórios estiverem coletados.',
+    knowledge || '',
     config.campaigns.length
       ? `CAMPANHAS possíveis (detecte pela conversa e pelos gatilhos):\n${campaignsDesc}`
       : '',
@@ -788,13 +797,18 @@ export async function testGenerate(input: {
   if (!credential || !provider)
     throw new HttpError(400, `Credencial ${agent.provider} não configurada`);
 
+  const knowledge = await buildKnowledgePrompt(input.companyId ?? null);
+  const system = [agent.systemPrompt ?? 'Você é um atendente prestativo.', knowledge]
+    .filter(Boolean)
+    .join('\n\n');
+
   const result = await provider.chat(
     {
       model: agent.model,
       temperature: agent.temperature,
       maxTokens: agent.maxTokens,
       messages: [
-        { role: 'system', content: agent.systemPrompt ?? 'Você é um atendente prestativo.' },
+        { role: 'system', content: system },
         { role: 'user', content: input.userMessage },
       ],
     },

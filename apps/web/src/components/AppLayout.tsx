@@ -60,6 +60,9 @@ export function AppLayout() {
         <NavLink to="/ai" className={linkClass}>
           IA
         </NavLink>
+        <NavLink to="/knowledge" className={linkClass}>
+          Conhecimento
+        </NavLink>
         <NavLink to="/integrations" className={linkClass}>
           Integrações
         </NavLink>
