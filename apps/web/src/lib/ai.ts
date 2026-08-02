@@ -28,6 +28,10 @@ export interface QualConfig {
   onQualified: 'pause+assign' | 'mark';
   defaultScript: QualField[];
   defaultRevenueFloor?: number | null;
+  defaultRequireDecisionMaker?: boolean;
+  defaultRequireCnpj?: boolean;
+  defaultAcceptedIndustries?: string[];
+  defaultExcludedIndustries?: string[];
   defaultDisqualifyMessage: string;
   defaultHandoffMessage: string;
   campaigns: QualCampaign[];

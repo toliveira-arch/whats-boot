@@ -546,6 +546,20 @@ async function runQualification(input: {
         : campaign?.disqualifyMessage || config.defaultDisqualifyMessage;
   }
 
+  // Diagnóstico do gate (aparece no log da nuvem): por que qualificou/não.
+  logger.info(
+    {
+      conversationId,
+      complete,
+      verdict,
+      reasons,
+      floor: campaign?.revenueFloor ?? config.defaultRevenueFloor ?? null,
+      faturamento: mergedCollected.faturamento ?? null,
+      campaign: campaign?.name ?? null,
+    },
+    'qualificação: decisão do gate',
+  );
+
   const qualState = {
     campaignId: campaign?.id ?? null,
     campaignName: campaign?.name ?? null,

@@ -32,6 +32,11 @@ export interface QualConfig {
   onQualified: 'pause+assign' | 'mark';
   defaultScript: QualField[];
   defaultRevenueFloor?: number | null;
+  // Critérios de gate no nível padrão (aplicam quando não há campanha própria).
+  defaultRequireDecisionMaker?: boolean;
+  defaultRequireCnpj?: boolean;
+  defaultAcceptedIndustries?: string[];
+  defaultExcludedIndustries?: string[];
   defaultDisqualifyMessage: string;
   defaultHandoffMessage: string;
   campaigns: QualCampaign[];
@@ -184,26 +189,32 @@ export function evaluateGate(
 ): { verdict: Exclude<LeadVerdict, 'IN_PROGRESS'>; reasons: string[] } {
   const reasons: string[] = [];
   const floor = campaign?.revenueFloor ?? config.defaultRevenueFloor ?? null;
+  // Campanha sobrescreve; senão usa o critério padrão.
+  const requireDecisionMaker = campaign?.requireDecisionMaker ?? config.defaultRequireDecisionMaker;
+  const requireCnpj = campaign?.requireCnpj ?? config.defaultRequireCnpj;
+  const excluded = campaign?.excludedIndustries?.length
+    ? campaign.excludedIndustries
+    : (config.defaultExcludedIndustries ?? []);
+  const accepted = campaign?.acceptedIndustries?.length
+    ? campaign.acceptedIndustries
+    : (config.defaultAcceptedIndustries ?? []);
 
   const amount = parseAmount(collected.faturamento ?? collected.revenue);
   if (floor != null && amount != null && amount < floor) {
     reasons.push(`faturamento ${amount} abaixo do piso ${floor}`);
   }
-  if (campaign?.requireDecisionMaker && !affirmative(collected.decisor)) {
+  if (requireDecisionMaker && !affirmative(collected.decisor)) {
     reasons.push('não é o decisor');
   }
-  if (campaign?.requireCnpj && !affirmative(collected.cnpj)) {
+  if (requireCnpj && !affirmative(collected.cnpj)) {
     reasons.push('sem CNPJ');
   }
   const ramo = String(collected.ramo ?? collected.segmento ?? '').toLowerCase();
   if (ramo) {
-    if (campaign?.excludedIndustries?.some((r) => ramo.includes(r.toLowerCase()))) {
+    if (excluded.some((r) => r.trim() && ramo.includes(r.toLowerCase()))) {
       reasons.push('ramo excluído');
     }
-    if (
-      campaign?.acceptedIndustries?.length &&
-      !campaign.acceptedIndustries.some((r) => ramo.includes(r.toLowerCase()))
-    ) {
+    if (accepted.length && !accepted.some((r) => r.trim() && ramo.includes(r.toLowerCase()))) {
       reasons.push('ramo fora dos aceitos');
     }
   }

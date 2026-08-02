@@ -155,6 +155,48 @@ export function QualificationEditor({ value, onChange }: Props) {
             </label>
           </div>
 
+          <h3>Critérios de qualificação (padrão)</h3>
+          <p className="sub small">
+            Além do piso de faturamento, você pode exigir estes critérios. Quem não atender é
+            desqualificado (a menos que uma campanha defina critérios próprios).
+          </p>
+          <div className="row-actions">
+            <label className="qual-req">
+              <input
+                type="checkbox"
+                checked={Boolean(value.defaultRequireDecisionMaker)}
+                onChange={(e) => set('defaultRequireDecisionMaker', e.target.checked)}
+              />
+              Exige ser o decisor
+            </label>
+            <label className="qual-req">
+              <input
+                type="checkbox"
+                checked={Boolean(value.defaultRequireCnpj)}
+                onChange={(e) => set('defaultRequireCnpj', e.target.checked)}
+              />
+              Exige ter CNPJ
+            </label>
+          </div>
+          <div className="grid2">
+            <label className="field">
+              <span>Ramos aceitos (vírgula, opcional)</span>
+              <input
+                value={(value.defaultAcceptedIndustries || []).join(', ')}
+                onChange={(e) => set('defaultAcceptedIndustries', csv(e.target.value))}
+                placeholder="ex: contabilidade, serviços"
+              />
+            </label>
+            <label className="field">
+              <span>Ramos excluídos (vírgula, opcional)</span>
+              <input
+                value={(value.defaultExcludedIndustries || []).join(', ')}
+                onChange={(e) => set('defaultExcludedIndustries', csv(e.target.value))}
+                placeholder="ex: MEI, autônomo"
+              />
+            </label>
+          </div>
+
           <label className="field">
             <span>Mensagem quando NÃO qualificado (dispensa cordial, sem expor o critério)</span>
             <textarea
