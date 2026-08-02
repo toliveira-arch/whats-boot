@@ -228,6 +228,51 @@ export function evaluateGate(
   return { verdict: reasons.length ? 'DISQUALIFIED' : 'QUALIFIED', reasons };
 }
 
+/**
+ * Desqualificação ANTECIPADA: verifica, a cada resposta, se algum dado JÁ
+ * coletado viola um critério de forma definitiva (não espera o roteiro acabar).
+ * Diferente do gate final, aqui só reprova quando o dado está presente e é
+ * claramente incompatível — nunca por "ainda não informado".
+ */
+export function evaluateEarlyDisqualify(
+  config: QualConfig,
+  campaign: QualCampaign | null,
+  collected: Record<string, unknown>,
+): { reasons: string[] } {
+  const reasons: string[] = [];
+  const has = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== '';
+  const floor = campaign?.revenueFloor ?? config.defaultRevenueFloor ?? null;
+  const requireDecisionMaker = campaign?.requireDecisionMaker ?? config.defaultRequireDecisionMaker;
+  const requireCnpj = campaign?.requireCnpj ?? config.defaultRequireCnpj;
+  const excluded = campaign?.excludedIndustries?.length
+    ? campaign.excludedIndustries
+    : (config.defaultExcludedIndustries ?? []);
+  const accepted = campaign?.acceptedIndustries?.length
+    ? campaign.acceptedIndustries
+    : (config.defaultAcceptedIndustries ?? []);
+
+  const amount = parseAmount(collected.faturamento ?? collected.revenue);
+  if (floor != null && amount != null && amount < floor) {
+    reasons.push(`faturamento ${amount} abaixo do piso ${floor}`);
+  }
+  if (requireDecisionMaker && has(collected.decisor) && !affirmative(collected.decisor)) {
+    reasons.push('não é o decisor');
+  }
+  if (requireCnpj && has(collected.cnpj) && !affirmative(collected.cnpj)) {
+    reasons.push('sem CNPJ');
+  }
+  const ramo = String(collected.ramo ?? collected.segmento ?? '').toLowerCase();
+  if (ramo) {
+    if (excluded.some((r) => r.trim() && ramo.includes(r.toLowerCase()))) {
+      reasons.push('ramo excluído');
+    }
+    if (accepted.length && !accepted.some((r) => r.trim() && ramo.includes(r.toLowerCase()))) {
+      reasons.push('ramo fora dos aceitos');
+    }
+  }
+  return { reasons };
+}
+
 /** Detecção por palavras-gatilho (reforça a classificação da IA). */
 export function detectByKeywords(config: QualConfig, text: string): QualCampaign | null {
   const t = text.toLowerCase();

@@ -12,6 +12,7 @@ import {
   detectByKeywords,
   effectiveScript,
   evaluateGate,
+  evaluateEarlyDisqualify,
   isComplete,
   resolveCampaign,
   DEFAULT_CLOSER_TEMPLATE,
@@ -536,7 +537,15 @@ async function runQualification(input: {
   let outboundText = out.reply?.trim() || '';
   let reasons: string[] = [];
 
-  if (complete) {
+  // 1) Desqualificação ANTECIPADA: se algum dado já coletado viola um critério,
+  //    desqualifica na hora e manda a mensagem de dispensa (não espera terminar).
+  const early = evaluateEarlyDisqualify(config, campaign, mergedCollected);
+  if (early.reasons.length) {
+    verdict = 'DISQUALIFIED';
+    reasons = early.reasons;
+    outboundText = campaign?.disqualifyMessage || config.defaultDisqualifyMessage;
+  } else if (complete) {
+    // 2) Roteiro completo: aplica o gate final (qualifica ou desqualifica).
     const gate = evaluateGate(config, campaign, mergedCollected);
     verdict = gate.verdict;
     reasons = gate.reasons;
@@ -571,17 +580,21 @@ async function runQualification(input: {
     updatedAt: new Date().toISOString(),
   };
 
-  const pause =
-    verdict !== 'IN_PROGRESS' &&
+  // MQL: pausa a IA e sinaliza que precisa de atendente (quando configurado).
+  const pauseForMql =
+    verdict === 'QUALIFIED' &&
     config.onQualified === 'pause+assign' &&
     effectiveMode === 'AUTOPILOT';
+  // Desqualificado: encerra o bot nessa conversa após a dispensa.
+  const stopForDisqualified = verdict === 'DISQUALIFIED' && effectiveMode === 'AUTOPILOT';
 
   await prisma.conversation.update({
     where: { id: conversationId },
     data: {
       leadVerdict: verdict,
       qualification: qualState as unknown as Prisma.InputJsonValue,
-      ...(pause ? { aiEnabled: false, status: 'PENDING' as never } : {}),
+      ...(pauseForMql ? { aiEnabled: false, status: 'PENDING' as never } : {}),
+      ...(stopForDisqualified ? { aiEnabled: false } : {}),
     },
   });
   broadcastToTenant(tid, 'lead.updated', { conversationId, verdict, qualification: qualState });
@@ -610,7 +623,7 @@ async function runQualification(input: {
       data: { filled: filledAfter, total: script.length },
     });
   }
-  if (pause) {
+  if (pauseForMql) {
     await recordEvent({ tenantId: tid, conversationId, type: 'HANDOFF' });
   }
 
