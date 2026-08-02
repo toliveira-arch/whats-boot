@@ -35,6 +35,9 @@ function MessageBubble({ m }: { m: ChatMessage }) {
             📄 {m.mediaName ?? 'documento'}
           </a>
         )}
+        {m.type === 'AUDIO' && !m.mediaUrl && m.content && (
+          <div className="bubble-audiotag">🎤 áudio transcrito</div>
+        )}
         {(m.content || m.caption) && <div className="bubble-text">{m.content ?? m.caption}</div>}
         <div className="bubble-meta">
           {new Date(m.createdAt).toLocaleTimeString('pt-BR', {

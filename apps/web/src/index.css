@@ -877,6 +877,13 @@ h2 {
   font-size: 12px;
 }
 
+.bubble-audiotag {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+  opacity: 0.85;
+}
+
 /* ===================== Follow-up ===================== */
 .fu-step {
   border: 1px solid var(--border);

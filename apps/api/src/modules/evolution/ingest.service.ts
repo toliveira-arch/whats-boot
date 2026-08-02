@@ -4,6 +4,7 @@ import { broadcastToTenant } from '../../realtime/emitter';
 import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { generateReplyJob } from '../ai/ai.service';
 import { recordEvent } from '../events/events.service';
+import { transcribeInboundAudio } from '../ai/transcription.service';
 import {
   extractText,
   mapAckStatus,
@@ -23,12 +24,28 @@ function jidToPhone(jid: string): string {
   return jid.split('@')[0] ?? jid;
 }
 
-type Channel = { id: string; companyId: string; tenantId: string; aiEnabled: boolean };
+type Channel = {
+  id: string;
+  companyId: string;
+  tenantId: string;
+  aiEnabled: boolean;
+  instanceName: string;
+  baseUrl: string;
+  apiKeyEncrypted: string;
+};
 
 async function loadChannel(channelId: string): Promise<Channel | null> {
   return prisma.evolutionInstance.findFirst({
     where: { id: channelId },
-    select: { id: true, companyId: true, tenantId: true, aiEnabled: true },
+    select: {
+      id: true,
+      companyId: true,
+      tenantId: true,
+      aiEnabled: true,
+      instanceName: true,
+      baseUrl: true,
+      apiKeyEncrypted: true,
+    },
   });
 }
 
@@ -94,6 +111,27 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
   const existing = await prisma.message.findUnique({ where: { waMessageId } });
   if (existing) return; // dedupe
 
+  const msgType = mapMessageType(data?.messageType);
+  let content = extractText(data?.message);
+  let transcribed = false;
+
+  // Áudio recebido: transcreve para a IA entender e continuar o roteiro.
+  if (!fromMe && msgType === 'AUDIO') {
+    const transcript = await transcribeInboundAudio({
+      channel: {
+        instanceName: channel.instanceName,
+        baseUrl: channel.baseUrl,
+        apiKeyEncrypted: channel.apiKeyEncrypted,
+      },
+      key: { id: waMessageId, remoteJid, fromMe: false },
+      message: data?.message,
+    });
+    if (transcript) {
+      content = transcript;
+      transcribed = true;
+    }
+  }
+
   const now = new Date();
   await prisma.message.create({
     data: {
@@ -104,8 +142,8 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
       evolutionInstanceId: channel.id,
       direction: fromMe ? 'OUTBOUND' : 'INBOUND',
       authorType: fromMe ? 'AGENT' : 'CONTACT',
-      type: mapMessageType(data?.messageType),
-      content: extractText(data?.message),
+      type: msgType,
+      content,
       waMessageId,
       status: fromMe ? 'SENT' : 'DELIVERED',
       metadata: (data?.message ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -131,7 +169,8 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
     contactId: contact.id,
     channelId: channel.id,
     direction: fromMe ? 'OUTBOUND' : 'INBOUND',
-    content: extractText(data?.message),
+    content,
+    transcribed,
     waMessageId,
   });
   broadcastToTenant(channel.tenantId, 'conversation.updated', { conversationId: conversation.id });

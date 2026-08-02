@@ -134,6 +134,17 @@ export function createEvolutionClient(baseUrl: string, apikey: string) {
       instance: string,
       body: { key: { id: string; remoteJid: string; fromMe: boolean }; reaction: string },
     ) => request('POST', baseUrl, `/message/sendReaction/${instance}`, apikey, body),
+    getBase64FromMediaMessage: (
+      instance: string,
+      key: { id: string; remoteJid: string; fromMe: boolean },
+    ) =>
+      request<{ base64?: string; mimetype?: string }>(
+        'POST',
+        baseUrl,
+        `/chat/getBase64FromMediaMessage/${instance}`,
+        apikey,
+        { message: { key }, convertToMp4: false },
+      ),
   };
 }
 
