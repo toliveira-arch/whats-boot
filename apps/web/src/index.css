@@ -1037,23 +1037,6 @@ h2 {
   font-weight: 400;
   color: var(--muted);
 }
-.crm-card-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.crm-act {
-  text-decoration: none;
-  font-size: 14px;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-}
 .crm-footer {
   display: flex;
   flex-wrap: wrap;

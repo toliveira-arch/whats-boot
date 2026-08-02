@@ -21,8 +21,6 @@ function LeadCard({
   onOpen: () => void;
   onDragStart: () => void;
 }) {
-  const digits = (lead.phone ?? '').replace(/\D/g, '');
-  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
   return (
     <div className="crm-card" draggable onDragStart={onDragStart} onClick={onOpen}>
       <div className="crm-card-top">
@@ -40,22 +38,6 @@ function LeadCard({
         {lead.interest && <span className="crm-chip">{lead.interest}</span>}
       </div>
       {lead.summary && <div className="crm-summary">{lead.summary}</div>}
-      {digits && (
-        <div className="crm-card-actions" onClick={stop}>
-          <a className="crm-act" href={`tel:+${digits}`} title="Ligar">
-            📞
-          </a>
-          <a
-            className="crm-act"
-            href={`https://wa.me/${digits}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Abrir no WhatsApp"
-          >
-            💬
-          </a>
-        </div>
-      )}
     </div>
   );
 }
