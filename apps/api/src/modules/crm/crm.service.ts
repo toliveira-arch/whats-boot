@@ -14,7 +14,7 @@ function tenantId(): string {
 export const CRM_STAGES = [
   { key: 'NEW', label: 'Lead Novo', desc: 'Novos leads recebidos' },
   { key: 'CONTACTED', label: 'Contato Feito', desc: 'Contato inicial realizado' },
-  { key: 'IN_PROGRESS', label: 'Em Andamento', desc: 'Em conversa / proposta' },
+  { key: 'IN_PROGRESS', label: 'Em Andamento', desc: 'Em conversa / Qualificando' },
   { key: 'FOLLOWUP', label: 'Follow up', desc: 'Aguardando retorno' },
   { key: 'QUALIFIED', label: 'Qualificado', desc: 'Lead qualificado (MQL)' },
   { key: 'DISQUALIFIED', label: 'Desqualificado', desc: 'Lead desqualificado' },
