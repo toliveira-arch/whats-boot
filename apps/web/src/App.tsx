@@ -13,6 +13,7 @@ import { Integrations } from './pages/Integrations';
 import { Warmup } from './pages/Warmup';
 import { FollowUp } from './pages/FollowUp';
 import { Knowledge } from './pages/Knowledge';
+import { Crm } from './pages/Crm';
 
 function ProtectedLayout() {
   const { status } = useAuth();
@@ -45,6 +46,7 @@ export function App() {
         <Route path="/warmup" element={<Warmup />} />
         <Route path="/followup" element={<FollowUp />} />
         <Route path="/knowledge" element={<Knowledge />} />
+        <Route path="/crm" element={<Crm />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

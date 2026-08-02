@@ -51,6 +51,8 @@ function titleOf(type: EventType, data: Record<string, unknown>): string {
       return `Follow-up enviado${data.step ? ` (msg ${String(data.step)})` : ''}`;
     case 'CLOSER_NOTIFIED':
       return 'Closer notificado (lead MQL)';
+    case 'CRM_STAGE_CHANGED':
+      return `Etapa alterada${data.to ? `: ${String(data.to)}` : ''}`;
     default:
       return String(type);
   }
@@ -75,6 +77,8 @@ function kindOf(type: EventType): string {
       return 'followup';
     case 'CLOSER_NOTIFIED':
       return 'handoff';
+    case 'CRM_STAGE_CHANGED':
+      return 'in_progress';
     default:
       return 'conversation';
   }

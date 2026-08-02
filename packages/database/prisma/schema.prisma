@@ -180,6 +180,7 @@ enum ConversationEventType {
   MEMORY_RESET
   FOLLOWUP_SENT
   CLOSER_NOTIFIED
+  CRM_STAGE_CHANGED
 }
 
 enum FollowUpStatus {
@@ -1040,6 +1041,7 @@ model Conversation {
   aiEnabled           Boolean? // override por conversa: null=herda instância/agente, true/false=forçado
   leadVerdict         String? // IN_PROGRESS | QUALIFIED | DISQUALIFIED (pré-qualificação SDR)
   qualification       Json? // campanha detectada, dados coletados, resumo, interesse/urgência
+  crmStage            String? // etapa do funil CRM (manual); null = derivado do veredito
   unreadCount         Int                  @default(0)
   isPinned            Boolean              @default(false)
   isArchived          Boolean              @default(false)

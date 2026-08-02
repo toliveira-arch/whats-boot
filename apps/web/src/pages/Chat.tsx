@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getSocket } from '../lib/socket';
 import * as chat from '../lib/chat';
 import type {
@@ -33,6 +34,18 @@ export function Chat() {
 
   const selectedRef = useRef<string | null>(null);
   selectedRef.current = selectedId;
+
+  // Deep-link: /chat?c=<conversationId> (usado pelo CRM para abrir a conversa).
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const c = searchParams.get('c');
+    if (c) {
+      setSelectedId(c);
+      searchParams.delete('c');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
