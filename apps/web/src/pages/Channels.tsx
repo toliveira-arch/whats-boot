@@ -38,6 +38,25 @@ export function Channels() {
   const [diagChannelId, setDiagChannelId] = useState<string | null>(null);
   const [tunnelUrl, setTunnelUrl] = useState('');
   const [applying, setApplying] = useState(false);
+  const [alertPhone, setAlertPhone] = useState('');
+  const [alertMsg, setAlertMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    ch.getAlertPhone()
+      .then((r) => setAlertPhone(r.phone))
+      .catch(() => undefined);
+  }, []);
+
+  async function saveAlertPhone() {
+    setAlertMsg(null);
+    try {
+      const r = await ch.setAlertPhone(alertPhone);
+      setAlertPhone(r.phone);
+      setAlertMsg(r.phone ? 'Número de alerta salvo ✅' : 'Alerta por WhatsApp desativado');
+    } catch (err) {
+      setAlertMsg(err instanceof ApiError ? err.message : 'Erro ao salvar');
+    }
+  }
 
   const loadChannels = useCallback(async () => {
     try {
@@ -225,6 +244,32 @@ export function Channels() {
       </div>
 
       {msg && <div className="error">{msg}</div>}
+
+      <div className="card-form">
+        <h2>Alerta de desconexão</h2>
+        <p className="sub">
+          Avisamos no painel quando um canal cair. Opcional: receba também no WhatsApp (enviado por
+          outra instância conectada). Deixe em branco para desativar.
+        </p>
+        {alertMsg && (
+          <div className="error" style={{ borderColor: 'var(--accent)' }}>
+            {alertMsg}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <label className="field" style={{ flex: 1, marginBottom: 0 }}>
+            <span>WhatsApp para alertas</span>
+            <input
+              value={alertPhone}
+              onChange={(e) => setAlertPhone(e.target.value)}
+              placeholder="55 11 99999-9999"
+            />
+          </label>
+          <button className="btn" onClick={() => void saveAlertPhone()}>
+            Salvar
+          </button>
+        </div>
+      </div>
 
       {showForm && (
         <form className="card-form" onSubmit={onCreate}>

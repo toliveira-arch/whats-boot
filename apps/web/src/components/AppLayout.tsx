@@ -1,14 +1,43 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { getSocket } from '../lib/socket';
 import { Logo } from './Logo';
 
 export function AppLayout() {
   const { profile, logout } = useAuth();
+  const [alert, setAlert] = useState<{ name: string; at: string } | null>(null);
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'nav-link active' : 'nav-link';
 
+  // Alerta ao vivo quando um canal desconecta.
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const onAlert = (a: { name?: string; at?: string }) =>
+      setAlert({ name: a.name ?? 'Canal', at: a.at ?? new Date().toISOString() });
+    socket.on('channel.alert', onAlert);
+    return () => {
+      socket.off('channel.alert', onAlert);
+    };
+  }, []);
+
   return (
     <div className="app-shell">
+      {alert && (
+        <div className="disc-banner">
+          <span>
+            ⚠️ O canal <strong>{alert.name}</strong> desconectou do WhatsApp. Reconecte em{' '}
+            <NavLink to="/channels" onClick={() => setAlert(null)}>
+              Canais
+            </NavLink>
+            .
+          </span>
+          <button type="button" className="disc-x" onClick={() => setAlert(null)}>
+            ×
+          </button>
+        </div>
+      )}
       <nav className="app-nav">
         <span className="brand">
           <Logo height={26} />

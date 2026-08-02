@@ -13,6 +13,8 @@ import {
   createChannelController,
   deleteChannelController,
   diagnosticsController,
+  getAlertsController,
+  setAlertsController,
   listChannelsController,
   logoutChannelController,
   qrCodeController,
@@ -29,6 +31,9 @@ export const channelsRouter = Router();
 channelsRouter.use(authenticate, tenantContext);
 
 channelsRouter.get('/', requirePermissions('channels.read'), listChannelsController);
+
+channelsRouter.get('/alerts', requirePermissions('channels.read'), getAlertsController);
+channelsRouter.put('/alerts', requirePermissions('channels.manage'), setAlertsController);
 
 channelsRouter.post(
   '/test',

@@ -5,6 +5,7 @@ import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { generateReplyJob } from '../ai/ai.service';
 import { recordEvent } from '../events/events.service';
 import { transcribeInboundAudio } from '../ai/transcription.service';
+import * as messaging from './messaging.service';
 import {
   extractText,
   mapAckStatus,
@@ -32,6 +33,8 @@ type Channel = {
   instanceName: string;
   baseUrl: string;
   apiKeyEncrypted: string;
+  name: string;
+  status: string;
 };
 
 async function loadChannel(channelId: string): Promise<Channel | null> {
@@ -45,6 +48,8 @@ async function loadChannel(channelId: string): Promise<Channel | null> {
       instanceName: true,
       baseUrl: true,
       apiKeyEncrypted: true,
+      name: true,
+      status: true,
     },
   });
 }
@@ -220,6 +225,7 @@ async function handleMessagesUpdate(channel: Channel, payload: EvolutionWebhookP
 }
 
 async function handleConnectionUpdate(channel: Channel, payload: EvolutionWebhookPayload) {
+  const prev = channel.status;
   const status = mapConnectionState(payload.data?.state);
   await prisma.evolutionInstance.update({
     where: { id: channel.id },
@@ -230,6 +236,48 @@ async function handleConnectionUpdate(channel: Channel, payload: EvolutionWebhoo
     },
   });
   broadcastToTenant(channel.tenantId, 'channel.status', { channelId: channel.id, status });
+
+  // Alerta: caiu a conexão (transição para DESCONECTADO).
+  if (status === 'DISCONNECTED' && prev !== 'DISCONNECTED') {
+    await alertChannelDisconnected(channel);
+  }
+}
+
+/** Avisa (painel + WhatsApp) que um canal desconectou. */
+async function alertChannelDisconnected(channel: Channel): Promise<void> {
+  broadcastToTenant(channel.tenantId, 'channel.alert', {
+    channelId: channel.id,
+    name: channel.name,
+    at: new Date().toISOString(),
+  });
+  try {
+    const setting = await prisma.setting.findFirst({
+      where: { namespace: 'alerts', key: 'whatsapp' },
+    });
+    const phone = String((setting?.value as { phone?: string } | null)?.phone ?? '').replace(
+      /\D/g,
+      '',
+    );
+    if (!phone) return;
+    // Envia por outra instância que ainda esteja conectada.
+    const sender = await prisma.evolutionInstance.findFirst({
+      where: { deletedAt: null, status: 'CONNECTED', id: { not: channel.id } },
+      select: { id: true },
+    });
+    if (!sender) {
+      logger.warn({ channelId: channel.id }, 'sem instância conectada para enviar alerta');
+      return;
+    }
+    await messaging.sendText({
+      tenantId: channel.tenantId,
+      channelId: sender.id,
+      number: phone,
+      text: `⚠️ *Alerta ZAPmoon*\n\nO canal *${channel.name}* desconectou do WhatsApp.\nReconecte em Canais para não interromper os atendimentos.`,
+      authorType: 'AI',
+    });
+  } catch (err) {
+    logger.warn({ err, channelId: channel.id }, 'falha ao enviar alerta de desconexão');
+  }
 }
 
 async function handleQrcodeUpdated(channel: Channel, payload: EvolutionWebhookPayload) {

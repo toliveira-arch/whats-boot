@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { prisma, runAsSystem, runWithTenant } from '@whats-boot/database';
+import { prisma, runAsSystem, runWithTenant, getTenantContext, Prisma } from '@whats-boot/database';
 import { env } from '../../config/env';
 import { HttpError } from '../../middlewares/error';
 import { logger } from '../../lib/logger';
@@ -15,6 +15,36 @@ interface CreateChannelInput {
   baseUrl: string;
   apiKey: string;
   phoneNumber?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Configuração de alertas (WhatsApp para avisar quando um canal desconectar)
+// ---------------------------------------------------------------------------
+
+const ALERTS_NS = 'alerts';
+const ALERTS_KEY = 'whatsapp';
+
+export async function getAlertPhone(): Promise<{ phone: string }> {
+  const s = await prisma.setting.findFirst({ where: { namespace: ALERTS_NS, key: ALERTS_KEY } });
+  return { phone: String((s?.value as { phone?: string } | null)?.phone ?? '') };
+}
+
+export async function setAlertPhone(phone: string): Promise<{ phone: string }> {
+  const tenantId = getTenantContext()?.tenantId;
+  if (!tenantId) throw new HttpError(500, 'Contexto de tenant ausente');
+  const clean = phone.trim();
+  const existing = await prisma.setting.findFirst({
+    where: { namespace: ALERTS_NS, key: ALERTS_KEY },
+  });
+  const value = { phone: clean } as unknown as Prisma.InputJsonValue;
+  if (existing) {
+    await prisma.setting.update({ where: { id: existing.id }, data: { value } });
+  } else {
+    await prisma.setting.create({
+      data: { tenantId, namespace: ALERTS_NS, key: ALERTS_KEY, value },
+    });
+  }
+  return { phone: clean };
 }
 
 function publicSelect() {

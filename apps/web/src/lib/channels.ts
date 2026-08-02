@@ -50,6 +50,14 @@ export function listChannels(): Promise<Channel[]> {
   return authFetch('/channels');
 }
 
+export function getAlertPhone(): Promise<{ phone: string }> {
+  return authFetch('/channels/alerts');
+}
+
+export function setAlertPhone(phone: string): Promise<{ phone: string }> {
+  return authFetch('/channels/alerts', { method: 'PUT', body: JSON.stringify({ phone }) });
+}
+
 export function testConnection(baseUrl: string, apiKey: string): Promise<{ ok: boolean }> {
   return authFetch('/channels/test', {
     method: 'POST',

@@ -5,6 +5,14 @@ export const listChannelsController = asyncHandler(async (_req, res) => {
   res.json(await channels.listChannels());
 });
 
+export const getAlertsController = asyncHandler(async (_req, res) => {
+  res.json(await channels.getAlertPhone());
+});
+
+export const setAlertsController = asyncHandler(async (req, res) => {
+  res.json(await channels.setAlertPhone(String(req.body?.phone ?? '')));
+});
+
 export const testConnectionController = asyncHandler(async (req, res) => {
   const { baseUrl, apiKey } = req.body;
   res.json(await channels.testConnection(baseUrl, apiKey));
