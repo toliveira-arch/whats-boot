@@ -138,7 +138,7 @@ export function Crm() {
   const byStage = (key: string) => leads.filter((l) => l.stage === key);
 
   return (
-    <div className="settings wide">
+    <div className="settings wide crm-page">
       <div className="page-head">
         <h1>CRM — Funil de leads</h1>
         <div className="row-actions" style={{ margin: 0 }}>
