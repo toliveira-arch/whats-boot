@@ -12,12 +12,12 @@ function tenantId(): string {
 // Pipeline fixo do CRM (MVP). A etapa é derivada do veredito quando não há
 // etapa manual definida; assim que o usuário move o card, vira manual.
 export const CRM_STAGES = [
-  { key: 'NEW', label: 'Novo' },
-  { key: 'IN_PROGRESS', label: 'Em qualificação' },
-  { key: 'QUALIFIED', label: 'Qualificado (MQL)' },
-  { key: 'NEGOTIATION', label: 'Em negociação' },
-  { key: 'WON', label: 'Ganho' },
-  { key: 'LOST', label: 'Perdido' },
+  { key: 'NEW', label: 'Lead Novo', desc: 'Novos leads recebidos' },
+  { key: 'CONTACTED', label: 'Contato Feito', desc: 'Contato inicial realizado' },
+  { key: 'IN_PROGRESS', label: 'Em Andamento', desc: 'Em conversa / proposta' },
+  { key: 'FOLLOWUP', label: 'Follow up', desc: 'Aguardando retorno' },
+  { key: 'QUALIFIED', label: 'Qualificado', desc: 'Lead qualificado (MQL)' },
+  { key: 'DISQUALIFIED', label: 'Desqualificado', desc: 'Lead desqualificado' },
 ] as const;
 
 export const CRM_STAGE_KEYS: string[] = CRM_STAGES.map((s) => s.key);
@@ -25,9 +25,21 @@ const STAGE_LABEL = new Map<string, string>(CRM_STAGES.map((s) => [s.key, s.labe
 
 function deriveStage(verdict: string | null): string {
   if (verdict === 'QUALIFIED') return 'QUALIFIED';
-  if (verdict === 'DISQUALIFIED') return 'LOST';
+  if (verdict === 'DISQUALIFIED') return 'DISQUALIFIED';
   if (verdict === 'IN_PROGRESS') return 'IN_PROGRESS';
   return 'NEW';
+}
+
+// Etapas antigas (versão anterior) → novas, para não perder cards no board.
+const LEGACY_STAGE: Record<string, string> = {
+  LOST: 'DISQUALIFIED',
+  WON: 'QUALIFIED',
+  NEGOTIATION: 'IN_PROGRESS',
+};
+
+function normalizeStage(stage: string): string {
+  const mapped = LEGACY_STAGE[stage] ?? stage;
+  return CRM_STAGE_KEYS.includes(mapped) ? mapped : 'NEW';
 }
 
 interface QualShape {
@@ -52,7 +64,7 @@ function toLead(c: {
   assignedTo: { user: { name: string } } | null;
 }) {
   const q = (c.qualification as QualShape | null) ?? {};
-  const stage = c.crmStage ?? deriveStage(c.leadVerdict);
+  const stage = normalizeStage(c.crmStage ?? deriveStage(c.leadVerdict));
   const last = c.lastMessageAt ?? c.createdAt;
   const stalledDays = Math.floor((Date.now() - last.getTime()) / 86_400_000);
   return {

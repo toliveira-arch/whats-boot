@@ -3,6 +3,7 @@ import { authFetch, API_URL, getAccessToken } from './api';
 export interface CrmStage {
   key: string;
   label: string;
+  desc?: string;
 }
 
 export interface Lead {

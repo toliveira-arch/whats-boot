@@ -21,6 +21,8 @@ function LeadCard({
   onOpen: () => void;
   onDragStart: () => void;
 }) {
+  const digits = (lead.phone ?? '').replace(/\D/g, '');
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
   return (
     <div className="crm-card" draggable onDragStart={onDragStart} onClick={onOpen}>
       <div className="crm-card-top">
@@ -38,6 +40,22 @@ function LeadCard({
         {lead.interest && <span className="crm-chip">{lead.interest}</span>}
       </div>
       {lead.summary && <div className="crm-summary">{lead.summary}</div>}
+      {digits && (
+        <div className="crm-card-actions" onClick={stop}>
+          <a className="crm-act" href={`tel:+${digits}`} title="Ligar">
+            📞
+          </a>
+          <a
+            className="crm-act"
+            href={`https://wa.me/${digits}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Abrir no WhatsApp"
+          >
+            💬
+          </a>
+        </div>
+      )}
     </div>
   );
 }
@@ -173,7 +191,10 @@ export function Crm() {
                 onDrop={() => void moveTo(s.key)}
               >
                 <div className="crm-col-head">
-                  <span>{s.label}</span>
+                  <div className="crm-col-title">
+                    <span>{s.label}</span>
+                    {s.desc && <span className="crm-col-desc">{s.desc}</span>}
+                  </div>
                   <span className="crm-count">{items.length}</span>
                 </div>
                 <div className="crm-col-body">
@@ -239,6 +260,19 @@ export function Crm() {
           </tbody>
         </table>
       )}
+
+      <div className="crm-footer">
+        <div className="crm-foot-item">
+          <span className="crm-foot-value">{leads.length}</span>
+          <span className="sub">Total de leads</span>
+        </div>
+        {stages.map((s) => (
+          <div key={s.key} className="crm-foot-item">
+            <span className="crm-foot-value">{byStage(s.key).length}</span>
+            <span className="sub">{s.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
