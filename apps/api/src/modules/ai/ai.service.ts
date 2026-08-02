@@ -457,7 +457,7 @@ async function runQualification(input: {
       ? `CAMPANHAS possíveis (detecte pela conversa e pelos gatilhos):\n${campaignsDesc}`
       : '',
     `ROTEIRO a coletar (nesta ordem):\n${scriptDesc}`,
-    `No campo "collected", use EXATAMENTE estas chaves (minúsculas, sem acento): ${scriptForPrompt.map((f) => f.key).join(', ')}.`,
+    `No campo "collected", use EXATAMENTE estas chaves (minúsculas, sem acento): ${scriptForPrompt.map((f) => f.key).join(', ')}. O campo "faturamento" (se houver) DEVE ser um número inteiro em reais por mês (ex.: 30000) — nunca texto, nunca "mil"/"k".`,
     `DADOS JÁ COLETADOS (não pergunte de novo): ${JSON.stringify(prevCanonForPrompt)}`,
     missing.length
       ? `AINDA FALTA COLETAR: ${missing.map((f) => f.label).join(', ')}. Nesta resposta, depois de validar o que o cliente disse, faça JÁ a próxima pergunta pendente${nextField ? `: "${nextField.question}"` : ''}.`

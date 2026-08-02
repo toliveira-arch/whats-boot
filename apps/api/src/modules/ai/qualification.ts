@@ -80,16 +80,17 @@ function affirmative(v: unknown): boolean {
   return /\b(sim|tenho|possuo|sou|yes|claro|positivo|com certeza)\b/i.test(v);
 }
 
-/** Extrai um número (faturamento) de number/string ("R$ 50.000", "50 mil"). */
+/** Extrai um número (faturamento) de number/string ("R$ 50.000", "50 mil", "30k", "1,5 milhão"). */
 export function parseAmount(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v !== 'string') return null;
-  const lower = v.toLowerCase();
-  const mil = /mil/.test(lower);
-  const milhao = /milh(ã|a)o|kk|kkk/.test(lower);
+  const lower = v.toLowerCase().trim();
+  const milhao = /milh(ã|a)o|milh(õ|o)es|kk/.test(lower);
+  // "mil" ou sufixo "k" (30k, 30 k) — mas não "kk" (milhão).
+  const mil = !milhao && (/\bmil\b/.test(lower) || /\d\s*k\b/.test(lower));
   const digits = lower
     .replace(/[^\d,.]/g, '')
-    .replace(/\.(?=\d{3}\b)/g, '')
+    .replace(/\.(?=\d{3}(\D|$))/g, '') // remove ponto de milhar
     .replace(',', '.');
   const n = parseFloat(digits);
   if (!Number.isFinite(n)) return null;
@@ -199,9 +200,14 @@ export function evaluateGate(
     ? campaign.acceptedIndustries
     : (config.defaultAcceptedIndustries ?? []);
 
+  // Piso de faturamento = gate estrito: só qualifica se confirmar que está >= piso.
   const amount = parseAmount(collected.faturamento ?? collected.revenue);
-  if (floor != null && amount != null && amount < floor) {
-    reasons.push(`faturamento ${amount} abaixo do piso ${floor}`);
+  if (floor != null) {
+    if (amount == null) {
+      reasons.push(`faturamento não confirmado (piso ${floor})`);
+    } else if (amount < floor) {
+      reasons.push(`faturamento ${amount} abaixo do piso ${floor}`);
+    }
   }
   if (requireDecisionMaker && !affirmative(collected.decisor)) {
     reasons.push('não é o decisor');
