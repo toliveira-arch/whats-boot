@@ -5,7 +5,7 @@ import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { generateReplyJob } from '../ai/ai.service';
 import { recordEvent } from '../events/events.service';
 import { transcribeInboundAudio } from '../ai/transcription.service';
-import * as messaging from './messaging.service';
+import { sendDisconnectAlert } from './channels.service';
 import {
   extractText,
   mapAckStatus,
@@ -250,33 +250,16 @@ async function alertChannelDisconnected(channel: Channel): Promise<void> {
     name: channel.name,
     at: new Date().toISOString(),
   });
-  try {
-    const setting = await prisma.setting.findFirst({
-      where: { namespace: 'alerts', key: 'whatsapp' },
-    });
-    const phone = String((setting?.value as { phone?: string } | null)?.phone ?? '').replace(
-      /\D/g,
-      '',
+  const res = await sendDisconnectAlert({
+    tenantId: channel.tenantId,
+    channelName: channel.name,
+    excludeChannelId: channel.id,
+  });
+  if (!res.ok) {
+    logger.warn(
+      { channelId: channel.id, reason: res.reason },
+      'alerta de desconexão por WhatsApp não enviado',
     );
-    if (!phone) return;
-    // Envia por outra instância que ainda esteja conectada.
-    const sender = await prisma.evolutionInstance.findFirst({
-      where: { deletedAt: null, status: 'CONNECTED', id: { not: channel.id } },
-      select: { id: true },
-    });
-    if (!sender) {
-      logger.warn({ channelId: channel.id }, 'sem instância conectada para enviar alerta');
-      return;
-    }
-    await messaging.sendText({
-      tenantId: channel.tenantId,
-      channelId: sender.id,
-      number: phone,
-      text: `⚠️ *Alerta ZAPmoon*\n\nO canal *${channel.name}* desconectou do WhatsApp.\nReconecte em Canais para não interromper os atendimentos.`,
-      authorType: 'AI',
-    });
-  } catch (err) {
-    logger.warn({ err, channelId: channel.id }, 'falha ao enviar alerta de desconexão');
   }
 }
 

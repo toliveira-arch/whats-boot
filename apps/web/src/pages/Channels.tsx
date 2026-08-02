@@ -40,6 +40,7 @@ export function Channels() {
   const [applying, setApplying] = useState(false);
   const [alertPhone, setAlertPhone] = useState('');
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
+  const [testingAlert, setTestingAlert] = useState(false);
 
   useEffect(() => {
     ch.getAlertPhone()
@@ -55,6 +56,19 @@ export function Channels() {
       setAlertMsg(r.phone ? 'Número de alerta salvo ✅' : 'Alerta por WhatsApp desativado');
     } catch (err) {
       setAlertMsg(err instanceof ApiError ? err.message : 'Erro ao salvar');
+    }
+  }
+
+  async function testAlertNow() {
+    setAlertMsg(null);
+    setTestingAlert(true);
+    try {
+      const r = await ch.testAlert();
+      setAlertMsg(r.message);
+    } catch (err) {
+      setAlertMsg(err instanceof ApiError ? err.message : 'Erro ao testar alerta');
+    } finally {
+      setTestingAlert(false);
     }
   }
 
@@ -248,8 +262,9 @@ export function Channels() {
       <div className="card-form">
         <h2>Alerta de desconexão</h2>
         <p className="sub">
-          Avisamos no painel quando um canal cair. Opcional: receba também no WhatsApp (enviado por
-          outra instância conectada). Deixe em branco para desativar.
+          Avisamos no painel quando um canal cair. Opcional: receba também no WhatsApp — o aviso é
+          enviado por <strong>outra instância que ainda esteja conectada</strong>, então mantenha
+          pelo menos 2 canais ativos para garantir a entrega. Deixe em branco para desativar.
         </p>
         {alertMsg && (
           <div className="error" style={{ borderColor: 'var(--accent)' }}>
@@ -267,6 +282,9 @@ export function Channels() {
           </label>
           <button className="btn" onClick={() => void saveAlertPhone()}>
             Salvar
+          </button>
+          <button className="btn ghost" disabled={testingAlert} onClick={() => void testAlertNow()}>
+            {testingAlert ? 'Enviando…' : 'Testar alerta'}
           </button>
         </div>
       </div>

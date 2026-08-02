@@ -58,6 +58,10 @@ export function setAlertPhone(phone: string): Promise<{ phone: string }> {
   return authFetch('/channels/alerts', { method: 'PUT', body: JSON.stringify({ phone }) });
 }
 
+export function testAlert(): Promise<{ ok: boolean; message: string }> {
+  return authFetch('/channels/alerts/test', { method: 'POST' });
+}
+
 export function testConnection(baseUrl: string, apiKey: string): Promise<{ ok: boolean }> {
   return authFetch('/channels/test', {
     method: 'POST',

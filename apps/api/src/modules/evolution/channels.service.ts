@@ -7,6 +7,7 @@ import { encryptSecret, decryptSecret } from '../../lib/crypto';
 import { broadcastToTenant } from '../../realtime/emitter';
 import { createEvolutionClient, WEBHOOK_EVENTS } from './evolution.client';
 import { mapConnectionState } from './evolution.types';
+import * as messaging from './messaging.service';
 
 interface CreateChannelInput {
   companyId: string;
@@ -45,6 +46,77 @@ export async function setAlertPhone(phone: string): Promise<{ phone: string }> {
     });
   }
   return { phone: clean };
+}
+
+export type AlertFailReason = 'no_phone' | 'no_connected_instance' | 'send_failed';
+
+export interface AlertResult {
+  ok: boolean;
+  reason?: AlertFailReason;
+  via?: string | null;
+  phone?: string;
+}
+
+/**
+ * Envia o alerta de desconexão por WhatsApp usando uma instância AINDA conectada.
+ * Como o próprio canal caiu, precisamos de outra instância para conseguir enviar.
+ * `excludeChannelId` evita tentar enviar pela instância que acabou de cair.
+ * Retorna o motivo estruturado para que a UI possa explicar por que não enviou.
+ */
+export async function sendDisconnectAlert(opts: {
+  tenantId: string;
+  channelName: string;
+  excludeChannelId?: string;
+  test?: boolean;
+}): Promise<AlertResult> {
+  const { phone } = await getAlertPhone();
+  const clean = phone.replace(/\D/g, '');
+  if (!clean) return { ok: false, reason: 'no_phone' };
+
+  const sender = await prisma.evolutionInstance.findFirst({
+    where: {
+      deletedAt: null,
+      status: 'CONNECTED',
+      ...(opts.excludeChannelId ? { id: { not: opts.excludeChannelId } } : {}),
+    },
+    select: { id: true, name: true },
+  });
+  if (!sender) return { ok: false, reason: 'no_connected_instance', phone: clean };
+
+  const text = opts.test
+    ? `✅ *Teste de alerta ZAPmoon*\n\nSe você recebeu esta mensagem, os alertas de desconexão estão funcionando. Avisaremos por aqui caso algum canal caia do WhatsApp.`
+    : `⚠️ *Alerta ZAPmoon*\n\nO canal *${opts.channelName}* desconectou do WhatsApp.\nReconecte em Canais para não interromper os atendimentos.`;
+
+  try {
+    await messaging.sendText({
+      tenantId: opts.tenantId,
+      channelId: sender.id,
+      number: clean,
+      text,
+      authorType: 'AI',
+    });
+    return { ok: true, via: sender.name, phone: clean };
+  } catch (err) {
+    logger.warn({ err }, 'falha ao enviar alerta de desconexão');
+    return { ok: false, reason: 'send_failed', phone: clean };
+  }
+}
+
+/** Dispara um alerta de teste para o número configurado e explica o resultado. */
+export async function testDisconnectAlert(): Promise<{ ok: boolean; message: string }> {
+  const tenantId = getTenantContext()?.tenantId;
+  if (!tenantId) throw new HttpError(500, 'Contexto de tenant ausente');
+  const res = await sendDisconnectAlert({ tenantId, channelName: 'Canal de teste', test: true });
+  if (res.ok) {
+    return { ok: true, message: `Alerta de teste enviado para ${res.phone} via "${res.via}" ✅` };
+  }
+  const reasons: Record<AlertFailReason, string> = {
+    no_phone: 'Informe e salve um número de WhatsApp antes de testar.',
+    no_connected_instance:
+      'Nenhuma instância conectada para enviar o aviso. O alerta por WhatsApp só sai se houver ao menos um canal conectado além do que caiu — mantenha 2 canais ativos para garantir o aviso.',
+    send_failed: 'Falha ao enviar a mensagem de teste. Verifique a instância conectada.',
+  };
+  return { ok: false, message: reasons[res.reason ?? 'send_failed'] };
 }
 
 function publicSelect() {

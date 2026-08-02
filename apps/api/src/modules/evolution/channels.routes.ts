@@ -15,6 +15,7 @@ import {
   diagnosticsController,
   getAlertsController,
   setAlertsController,
+  testAlertsController,
   listChannelsController,
   logoutChannelController,
   qrCodeController,
@@ -34,6 +35,7 @@ channelsRouter.get('/', requirePermissions('channels.read'), listChannelsControl
 
 channelsRouter.get('/alerts', requirePermissions('channels.read'), getAlertsController);
 channelsRouter.put('/alerts', requirePermissions('channels.manage'), setAlertsController);
+channelsRouter.post('/alerts/test', requirePermissions('channels.manage'), testAlertsController);
 
 channelsRouter.post(
   '/test',
