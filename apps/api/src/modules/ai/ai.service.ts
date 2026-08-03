@@ -813,6 +813,105 @@ export async function testCloser(companyId: string | null): Promise<{
   return { sent: true, closerPhone, channelConnected: channel.status === 'CONNECTED' };
 }
 
+/**
+ * Reenvia MANUALMENTE ao closer os dados reais de uma conversa já QUALIFICADA.
+ * Usado pelo botão do CRM quando o disparo automático não aconteceu.
+ */
+export async function notifyCloserForConversation(conversationId: string): Promise<{
+  sent: boolean;
+  closerPhone: string;
+  channelConnected: boolean;
+}> {
+  const tid = tenantId();
+  const conv = await prisma.conversation.findFirst({
+    where: { id: conversationId, deletedAt: null },
+    select: {
+      id: true,
+      companyId: true,
+      evolutionInstanceId: true,
+      leadVerdict: true,
+      crmStage: true,
+      qualification: true,
+      contact: { select: { name: true, pushName: true, waJid: true, phoneNumber: true } },
+    },
+  });
+  if (!conv) throw new HttpError(404, 'Lead não encontrado');
+  const isQualified = conv.leadVerdict === 'QUALIFIED' || conv.crmStage === 'QUALIFIED';
+  if (!isQualified) {
+    throw new HttpError(400, 'Só é possível enviar ao closer leads qualificados.');
+  }
+
+  const company = await prisma.company.findFirst({
+    where: { id: conv.companyId, deletedAt: null },
+    select: { name: true, closerName: true, closerPhone: true },
+  });
+  const closerPhone = normalizeBrPhone(company?.closerPhone);
+  if (!closerPhone) {
+    throw new HttpError(400, 'Esta empresa não tem WhatsApp de closer preenchido (menu Empresas).');
+  }
+
+  // Canal: o da própria conversa; se indisponível, um canal da empresa.
+  let channel = await prisma.evolutionInstance.findFirst({
+    where: { id: conv.evolutionInstanceId, deletedAt: null },
+    select: { id: true, status: true },
+  });
+  if (!channel) {
+    channel = await prisma.evolutionInstance.findFirst({
+      where: { companyId: conv.companyId, deletedAt: null },
+      orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, status: true },
+    });
+  }
+  if (!channel) {
+    throw new HttpError(400, 'Esta empresa não tem canal (instância) para enviar a mensagem.');
+  }
+
+  const q =
+    (conv.qualification as {
+      campaignName?: string;
+      summary?: string;
+      interest?: string;
+      urgency?: string;
+      collected?: Record<string, unknown>;
+    } | null) ?? {};
+  const collected = q.collected ?? {};
+  const leadPhone = (conv.contact.waJid ?? conv.contact.phoneNumber ?? '').replace(/\D/g, '');
+  const val = (v: unknown) => (v === undefined || v === null || v === '' ? '—' : String(v));
+  const agent = await resolveAgentForCompany(conv.companyId);
+  const qualCfg = (agent?.qualification as unknown as QualConfig | null) ?? null;
+  const template = qualCfg?.closerTemplate?.trim() || DEFAULT_CLOSER_TEMPLATE;
+  const text = renderTemplate(template, {
+    nome: val(collected.nome ?? conv.contact.name ?? conv.contact.pushName),
+    telefone: leadPhone || '—',
+    empresa: val(company?.name),
+    faturamento: val(collected.faturamento),
+    ramo: val(collected.ramo ?? collected.segmento),
+    cnpj: val(collected.cnpj),
+    decisor: val(collected.decisor),
+    dor: val(collected.dor),
+    resumo: val(q.summary),
+    campanha: val(q.campaignName),
+    interesse: val(q.interest),
+    urgencia: val(q.urgency),
+    closer: val(company?.closerName),
+  });
+
+  await messaging.sendText({
+    tenantId: tid,
+    channelId: channel.id,
+    number: closerPhone,
+    text,
+    authorType: 'AI',
+  });
+  await recordEvent({
+    tenantId: tid,
+    conversationId: conv.id,
+    type: 'CLOSER_NOTIFIED',
+    data: { closer: company?.closerName ?? null, manual: true },
+  });
+  return { sent: true, closerPhone, channelConnected: channel.status === 'CONNECTED' };
+}
+
 /** Processa um job da fila ai.process dentro do contexto de tenant. */
 export async function generateReplyJob(job: {
   conversationId: string;

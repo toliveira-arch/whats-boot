@@ -61,6 +61,12 @@ export function createTestLead(input: {
   return authFetch('/crm/test-lead', { method: 'POST', body: JSON.stringify(input) });
 }
 
+export function notifyCloser(
+  id: string,
+): Promise<{ sent: boolean; closerPhone: string; channelConnected: boolean }> {
+  return authFetch(`/crm/leads/${id}/notify-closer`, { method: 'POST' });
+}
+
 /** Baixa o CSV de leads (respeitando empresa/busca). */
 export async function downloadCsv(companyId?: string | null, search?: string): Promise<void> {
   const res = await fetch(`${API_URL}/crm/export${q(companyId, search)}`, {

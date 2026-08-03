@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../lib/http';
 import * as crm from './crm.service';
+import { notifyCloserForConversation } from '../ai/ai.service';
 
 function companyIdOf(req: { query: Record<string, unknown> }): string | null {
   const v = req.query.companyId;
@@ -17,6 +18,10 @@ export const listLeadsController = asyncHandler(async (req, res) => {
 
 export const setStageController = asyncHandler(async (req, res) => {
   res.json(await crm.setStage(req.params.id!, String(req.body?.stage ?? '')));
+});
+
+export const notifyCloserController = asyncHandler(async (req, res) => {
+  res.json(await notifyCloserForConversation(req.params.id!));
 });
 
 export const testLeadController = asyncHandler(async (req, res) => {

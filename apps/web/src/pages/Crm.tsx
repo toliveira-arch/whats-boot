@@ -16,10 +16,12 @@ function LeadCard({
   lead,
   onOpen,
   onDragStart,
+  onNotifyCloser,
 }: {
   lead: Lead;
   onOpen: () => void;
   onDragStart: () => void;
+  onNotifyCloser: () => void;
 }) {
   return (
     <div className="crm-card" draggable onDragStart={onDragStart} onClick={onOpen}>
@@ -38,6 +40,17 @@ function LeadCard({
         {lead.interest && <span className="crm-chip">{lead.interest}</span>}
       </div>
       {lead.summary && <div className="crm-summary">{lead.summary}</div>}
+      {lead.stage === 'QUALIFIED' && (
+        <div className="crm-card-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="btn ghost crm-closer-btn"
+            title="Reenviar este lead ao closer"
+            onClick={onNotifyCloser}
+          >
+            📤 Enviar ao closer
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -55,6 +68,7 @@ export function Crm() {
   const [testPhone, setTestPhone] = useState('5511993064913');
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     listCompanies()
@@ -111,6 +125,24 @@ export function Crm() {
   }
 
   const openLead = (id: string) => nav(`/chat?c=${id}`);
+
+  async function sendToCloser(id: string) {
+    setFlash(null);
+    try {
+      const r = await crm.notifyCloser(id);
+      setFlash({
+        ok: true,
+        text: `Lead enviado ao closer (${r.closerPhone})${
+          r.channelConnected ? '' : ' — atenção: canal desconectado, verifique o envio'
+        } ✅`,
+      });
+    } catch (err) {
+      setFlash({
+        ok: false,
+        text: err instanceof ApiError ? err.message : 'Falha ao enviar ao closer',
+      });
+    }
+  }
 
   async function doExport() {
     try {
@@ -170,6 +202,11 @@ export function Crm() {
       </div>
 
       {msg && <div className="error">{msg}</div>}
+      {flash && (
+        <div className={flash.ok ? 'crm-testlead-ok' : 'error'} style={{ marginBottom: 12 }}>
+          {flash.text}
+        </div>
+      )}
 
       <div className="crm-filters">
         <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
@@ -229,6 +266,7 @@ export function Crm() {
                       lead={l}
                       onOpen={() => openLead(l.id)}
                       onDragStart={() => setDragId(l.id)}
+                      onNotifyCloser={() => void sendToCloser(l.id)}
                     />
                   ))}
                   {items.length === 0 && <div className="sub small crm-empty">—</div>}
@@ -276,9 +314,20 @@ export function Crm() {
                 <td className="sub">{l.faturamento ? `R$ ${l.faturamento}` : '—'}</td>
                 <td className="sub">{stalledLabel(l.stalledDays)}</td>
                 <td>
-                  <button className="btn ghost sm" onClick={() => openLead(l.id)}>
-                    Abrir
-                  </button>
+                  <div className="crm-row-actions">
+                    <button className="btn ghost sm" onClick={() => openLead(l.id)}>
+                      Abrir
+                    </button>
+                    {l.stage === 'QUALIFIED' && (
+                      <button
+                        className="btn ghost sm"
+                        title="Reenviar este lead ao closer"
+                        onClick={() => void sendToCloser(l.id)}
+                      >
+                        📤 Closer
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

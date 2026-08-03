@@ -1081,6 +1081,19 @@ h2 {
   font-weight: 400;
   color: var(--muted);
 }
+.crm-card-actions {
+  margin-top: 10px;
+}
+.crm-closer-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+  width: 100%;
+}
+.crm-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .crm-footer {
   display: flex;
   flex-wrap: wrap;

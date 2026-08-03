@@ -5,6 +5,7 @@ import { requirePermissions } from '../../middlewares/authorize';
 import {
   exportController,
   listLeadsController,
+  notifyCloserController,
   setStageController,
   stagesController,
   testLeadController,
@@ -20,4 +21,5 @@ crmRouter.get('/stages', READ, stagesController);
 crmRouter.get('/leads', READ, listLeadsController);
 crmRouter.get('/export', READ, exportController);
 crmRouter.post('/test-lead', WRITE, testLeadController);
+crmRouter.post('/leads/:id/notify-closer', WRITE, notifyCloserController);
 crmRouter.patch('/leads/:id/stage', WRITE, setStageController);
