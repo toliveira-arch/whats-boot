@@ -9,7 +9,7 @@ import { ApiError } from '../lib/api';
 const EMPTY: ai.AiAgentInput = {
   name: 'Agente IA',
   provider: 'OPENAI',
-  model: 'gpt-4o-mini',
+  model: 'gpt-4o',
   temperature: 0.7,
   maxTokens: 1024,
   mode: 'COPILOT',

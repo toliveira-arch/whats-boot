@@ -124,7 +124,7 @@ export async function upsertAgent(companyId: string | null, input: AgentConfigIn
       companyId: companyId ?? null,
       name: data.name,
       provider: input.provider ?? 'OPENAI',
-      model: input.model ?? 'gpt-4o-mini',
+      model: input.model ?? 'gpt-4o',
       temperature: input.temperature ?? 0.7,
       maxTokens: input.maxTokens ?? 1024,
       mode: input.mode ?? 'COPILOT',
