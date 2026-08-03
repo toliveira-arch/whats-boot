@@ -338,6 +338,8 @@ model Tenant {
   conversationTags    ConversationTag[]
   rdIntegrations      RdIntegration[]
   rdLeadEvents        RdLeadEvent[]
+  kommoIntegrations   KommoIntegration[]
+  kommoLeadEvents     KommoLeadEvent[]
   warmupSessions      WarmupSession[]
   warmupAssets        WarmupAsset[]
   followUpSequences   FollowUpSequence[]
@@ -446,6 +448,44 @@ model FollowUpSequence {
 
 /// Log de leads recebidos do RD Station (diagnóstico).
 model RdLeadEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  integrationId String
+  name          String?
+  phone         String?
+  email         String?
+  status        String // RECEIVED | SENT | SKIPPED | FAILED
+  detail        String?
+  payload       Json?
+  createdAt     DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([integrationId])
+}
+
+model KommoIntegration {
+  id             String    @id @default(cuid())
+  tenantId       String
+  companyId      String? // integração por empresa (cliente)
+  enabled        Boolean   @default(false)
+  webhookToken   String    @unique
+  channelId      String? // EvolutionInstance que dispara as mensagens
+  openingMessage String    @default("Olá {{nome}}, tudo bem?")
+  handoffToSdr   Boolean   @default(true)
+  subdomain      String? // conta Kommo: {subdomain}.kommo.com
+  accessTokenEnc String? // token de longa duração do Kommo (criptografado)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model KommoLeadEvent {
   id            String   @id @default(cuid())
   tenantId      String
   integrationId String
