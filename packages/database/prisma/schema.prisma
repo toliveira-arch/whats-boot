@@ -476,6 +476,7 @@ model KommoIntegration {
   handoffToSdr   Boolean   @default(true)
   subdomain      String? // conta Kommo: {subdomain}.kommo.com
   accessTokenEnc String? // token de longa duração do Kommo (criptografado)
+  sourceFilter   String? // só puxa leads cuja fonte/funil casem com este texto (ex.: "RD Station"); vazio = todos
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?

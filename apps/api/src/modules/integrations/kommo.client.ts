@@ -37,7 +37,16 @@ interface KommoContact {
 interface KommoLead {
   id: number;
   name?: string;
-  _embedded?: { contacts?: Array<{ id: number; is_main?: boolean }> };
+  pipeline_id?: number;
+  custom_fields_values?: Array<{
+    field_name?: string;
+    field_code?: string;
+    values?: Array<{ value?: unknown }>;
+  }> | null;
+  _embedded?: {
+    contacts?: Array<{ id: number; is_main?: boolean }>;
+    source?: { name?: string } | null;
+  };
 }
 
 function pickField(contact: KommoContact, code: string): string | null {
@@ -52,20 +61,39 @@ export interface KommoLeadInfo {
   name: string | null;
   phone: string | null;
   email: string | null;
+  /** Sinais para casar com o filtro de fonte (valores de campos, fonte, etc.). */
+  sourceSignals: string[];
+  pipelineId: number | null;
 }
 
-/** Busca o contato principal de um lead e extrai nome/telefone/email. */
+/** Busca o contato principal de um lead e extrai nome/telefone/email + fonte. */
 export async function fetchLeadContact(
   subdomain: string,
   token: string,
   leadId: number,
 ): Promise<KommoLeadInfo> {
-  const lead = await kommoGet<KommoLead>(subdomain, token, `/leads/${leadId}?with=contacts`);
+  const lead = await kommoGet<KommoLead>(
+    subdomain,
+    token,
+    `/leads/${leadId}?with=contacts,source_id`,
+  );
   const contacts = lead?._embedded?.contacts ?? [];
   const main = contacts.find((c) => c.is_main) ?? contacts[0];
   let name = lead?.name ?? null;
   let phone: string | null = null;
   let email: string | null = null;
+
+  // Sinais de "fonte": valores dos campos do lead + fonte declarada.
+  const signals: string[] = [];
+  for (const f of lead?.custom_fields_values ?? []) {
+    if (f.field_name) signals.push(String(f.field_name));
+    for (const v of f.values ?? []) {
+      if (v.value != null && v.value !== '') signals.push(String(v.value));
+    }
+  }
+  const srcName = lead?._embedded?.source?.name;
+  if (srcName) signals.push(String(srcName));
+
   if (main) {
     const contact = await kommoGet<KommoContact>(subdomain, token, `/contacts/${main.id}`);
     if (contact) {
@@ -74,7 +102,17 @@ export async function fetchLeadContact(
       email = pickField(contact, 'EMAIL');
     }
   }
-  return { name, phone, email };
+  return { name, phone, email, sourceSignals: signals, pipelineId: lead?.pipeline_id ?? null };
+}
+
+/** Nome do pipeline (funil) — usado como sinal extra de fonte. */
+export async function fetchPipelineName(
+  subdomain: string,
+  token: string,
+  pipelineId: number,
+): Promise<string | null> {
+  const p = await kommoGet<{ name?: string }>(subdomain, token, `/leads/pipelines/${pipelineId}`);
+  return p?.name ?? null;
 }
 
 /** Busca um contato diretamente (quando o webhook é de contato). */
@@ -84,10 +122,13 @@ export async function fetchContact(
   contactId: number,
 ): Promise<KommoLeadInfo> {
   const contact = await kommoGet<KommoContact>(subdomain, token, `/contacts/${contactId}`);
-  if (!contact) return { name: null, phone: null, email: null };
+  if (!contact)
+    return { name: null, phone: null, email: null, sourceSignals: [], pipelineId: null };
   return {
     name: contact.name ?? null,
     phone: pickField(contact, 'PHONE'),
     email: pickField(contact, 'EMAIL'),
+    sourceSignals: [],
+    pipelineId: null,
   };
 }

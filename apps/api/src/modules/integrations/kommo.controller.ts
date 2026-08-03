@@ -10,6 +10,7 @@ function present(integ: {
   handoffToSdr: boolean;
   subdomain: string | null;
   accessTokenEnc: string | null;
+  sourceFilter: string | null;
 }) {
   return {
     id: integ.id,
@@ -19,6 +20,7 @@ function present(integ: {
     handoffToSdr: integ.handoffToSdr,
     subdomain: integ.subdomain ?? '',
     hasToken: Boolean(integ.accessTokenEnc),
+    sourceFilter: integ.sourceFilter ?? '',
     webhookUrl: kommo.kommoWebhookUrl(integ.webhookToken),
   };
 }

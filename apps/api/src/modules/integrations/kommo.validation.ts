@@ -7,4 +7,5 @@ export const kommoConfigSchema = z.object({
   handoffToSdr: z.boolean().optional(),
   subdomain: z.string().max(200).nullable().optional(),
   accessToken: z.string().max(4000).nullable().optional(),
+  sourceFilter: z.string().max(200).nullable().optional(),
 });

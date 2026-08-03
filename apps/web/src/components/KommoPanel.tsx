@@ -44,6 +44,7 @@ export function KommoPanel({ companyId, channels }: { companyId: string; channel
           openingMessage: integ.openingMessage,
           handoffToSdr: integ.handoffToSdr,
           subdomain: integ.subdomain,
+          sourceFilter: integ.sourceFilter,
           ...(tokenInput.trim() ? { accessToken: tokenInput.trim() } : {}),
         },
         companyId,
@@ -148,6 +149,23 @@ export function KommoPanel({ companyId, channels }: { companyId: string; channel
             />
           </label>
         </div>
+      </div>
+
+      <div className="card-form">
+        <h2>Fonte dos leads (Lead fonte)</h2>
+        <p className="sub small">
+          Puxe apenas os leads cuja <strong>fonte</strong> (ou funil) contenha este texto — por
+          exemplo <strong>RD Station</strong>. Deixe em branco para puxar todos os leads que entram
+          no Kommo.
+        </p>
+        <label className="field">
+          <span>Filtrar por fonte do lead (opcional)</span>
+          <input
+            value={integ.sourceFilter}
+            onChange={(e) => set('sourceFilter', e.target.value)}
+            placeholder="ex.: RD Station"
+          />
+        </label>
       </div>
 
       <div className="card-form">

@@ -4,7 +4,12 @@ import { env } from '../../config/env';
 import { HttpError } from '../../middlewares/error';
 import { encryptSecret, decryptSecret } from '../../lib/crypto';
 import { dispatchLead, normalizeBrPhone } from './dispatch';
-import { fetchContact, fetchLeadContact, type KommoLeadInfo } from './kommo.client';
+import {
+  fetchContact,
+  fetchLeadContact,
+  fetchPipelineName,
+  type KommoLeadInfo,
+} from './kommo.client';
 
 function tenantId(): string {
   const id = getTenantContext()?.tenantId;
@@ -46,6 +51,7 @@ export interface KommoConfigInput {
   handoffToSdr?: boolean;
   subdomain?: string | null;
   accessToken?: string | null;
+  sourceFilter?: string | null;
 }
 
 export async function upsertIntegration(companyId: string | null, input: KommoConfigInput) {
@@ -57,6 +63,9 @@ export async function upsertIntegration(companyId: string | null, input: KommoCo
     ...(input.handoffToSdr !== undefined ? { handoffToSdr: input.handoffToSdr } : {}),
     ...(input.subdomain !== undefined
       ? { subdomain: input.subdomain ? input.subdomain.trim() : null }
+      : {}),
+    ...(input.sourceFilter !== undefined
+      ? { sourceFilter: input.sourceFilter ? input.sourceFilter.trim() : null }
       : {}),
   };
   // Token: string não-vazia → criptografa; string vazia → limpa; undefined → mantém.
@@ -176,6 +185,20 @@ export async function handleKommoWebhook(
       leadId != null
         ? await fetchLeadContact(integ.subdomain, accessToken, leadId)
         : await fetchContact(integ.subdomain, accessToken, contactId as number);
+
+    // Filtro de fonte: só puxa leads cuja fonte/funil case com o texto (ex.: "RD Station").
+    if (integ.sourceFilter && integ.sourceFilter.trim()) {
+      const needle = integ.sourceFilter.trim().toLowerCase();
+      let matched = info.sourceSignals.some((s) => s.toLowerCase().includes(needle));
+      if (!matched && info.pipelineId != null) {
+        const pname = await fetchPipelineName(integ.subdomain, accessToken, info.pipelineId);
+        if (pname && pname.toLowerCase().includes(needle)) matched = true;
+      }
+      if (!matched) {
+        await logEvent('SKIPPED', info, `fonte diferente do filtro "${integ.sourceFilter}"`);
+        return { status: 'skipped', detail: 'source-filtered' };
+      }
+    }
 
     const phone = normalizeBrPhone(info.phone);
     if (!phone) {

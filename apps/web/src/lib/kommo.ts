@@ -8,6 +8,7 @@ export interface KommoIntegration {
   handoffToSdr: boolean;
   subdomain: string;
   hasToken: boolean;
+  sourceFilter: string;
   webhookUrl: string;
 }
 
@@ -28,6 +29,7 @@ export interface KommoConfigInput {
   handoffToSdr?: boolean;
   subdomain?: string | null;
   accessToken?: string | null;
+  sourceFilter?: string | null;
 }
 
 function companyQuery(companyId?: string | null): string {
