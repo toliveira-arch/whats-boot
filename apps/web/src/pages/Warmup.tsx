@@ -424,14 +424,11 @@ function SessionCard({
     }
   }
   async function test() {
-    setMsg('Enviando mensagem de teste…');
+    setMsg('Iniciando conversa de teste…');
     try {
       const r = await wu.runSessionNow(session.id);
-      setMsg(
-        r.sent
-          ? 'Mensagem de teste enviada ✅'
-          : 'Não enviou — verifique se ao menos 2 chips do pool estão conectados',
-      );
+      setMsg(r.message);
+      if (r.started) onChanged();
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Erro no teste');
     }

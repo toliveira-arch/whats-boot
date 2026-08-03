@@ -5,7 +5,7 @@ import {
   defaultWarmupConfig,
   parseConfig,
   resolvePool,
-  runBeat,
+  startTestConversation,
   type WarmupConfig,
 } from './warmup.engine';
 
@@ -152,24 +152,35 @@ export async function deleteSession(id: string) {
   return { ok: true };
 }
 
-/** Roda um beat imediatamente (botão "Testar agora"). */
+/**
+ * Botão "Testar agora": dispara uma CONVERSA de teste (papo alternado de ~6
+ * mensagens entre os chips), em background. Verifica antes se há ao menos 2
+ * chips conectados para dar um retorno claro na hora.
+ */
 export async function runNow(id: string) {
   const s = await prisma.warmupSession.findFirst({ where: { id, deletedAt: null } });
   if (!s) throw new HttpError(404, 'Sessão não encontrada');
-  const config = parseConfig(s.config);
-  const today = currentDateInTz(config.timezone);
-  const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
-  const sent = await runBeat(
-    { id: s.id, tenantId: s.tenantId, channelIds: resolvePool(s), beatsToday, beatsDate: today },
-    config,
-  );
-  if (sent) {
-    await prisma.warmupSession.update({
-      where: { id },
-      data: { lastBeatAt: new Date(), beatsToday: beatsToday + 1, beatsDate: today },
-    });
+  const pool = resolvePool(s);
+  const channels = await prisma.evolutionInstance.findMany({
+    where: { id: { in: pool }, deletedAt: null },
+    select: { status: true, phoneNumber: true },
+  });
+  const connected = channels.filter((c) => c.status === 'CONNECTED' && c.phoneNumber).length;
+  if (connected < 2) {
+    return {
+      started: false,
+      connected,
+      message: 'Conecte ao menos 2 chips do pool (menu Canais) para testar a conversa.',
+    };
   }
-  return { sent };
+  const started = startTestConversation(s.id, s.tenantId);
+  return {
+    started,
+    connected,
+    message: started
+      ? 'Conversa de teste iniciada — os chips vão trocar algumas mensagens. Acompanhe no Chat.'
+      : 'Já existe uma conversa em andamento nesta sessão. Aguarde terminar.',
+  };
 }
 
 // ---------------------------------------------------------------------------

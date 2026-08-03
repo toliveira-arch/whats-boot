@@ -299,8 +299,6 @@ interface SessionRow {
   id: string;
   tenantId: string;
   channelIds: string[];
-  beatsToday: number;
-  beatsDate: string | null;
 }
 
 /** Resolve o pool de canais: usa channelIds; cai para o par legado A/B. */
@@ -336,33 +334,26 @@ function choosePair(
   return [connected[0] as Chan, connected[1] as Chan];
 }
 
-/** Executa uma troca de mensagem entre um par sorteado do pool. Retorna true se enviou. */
-export async function runBeat(session: SessionRow, config: WarmupConfig): Promise<boolean> {
-  if (session.channelIds.length < 2) {
-    logger.warn({ sessionId: session.id }, 'aquecimento: pool precisa de 2+ canais');
-    return false;
-  }
-  const loaded = (await Promise.all(session.channelIds.map(loadChan))).filter((c): c is Chan =>
-    Boolean(c),
-  );
-  const connected = loaded.filter((c) => c.status === 'CONNECTED' && c.phoneNumber);
-  if (connected.length < 2) {
-    logger.warn({ sessionId: session.id }, 'aquecimento: 2+ canais precisam estar conectados');
-    return false;
-  }
+/** Canais do pool que estão conectados e prontos para conversar. */
+async function connectedPool(channelIds: string[]): Promise<Chan[]> {
+  const loaded = (await Promise.all(channelIds.map(loadChan))).filter((c): c is Chan => Boolean(c));
+  return loaded.filter((c) => c.status === 'CONNECTED' && c.phoneNumber);
+}
 
-  const [sender, receiver] = choosePair(
-    connected,
-    config.veteranIds ?? [],
-    lastPairKey.get(session.id),
-  );
-  lastPairKey.set(session.id, pairKey(sender.id, receiver.id));
+/** Envia UMA mensagem de `sender` para `receiver` (com "digitando…", imagem e reação). */
+async function sendOneMessage(
+  session: SessionRow,
+  config: WarmupConfig,
+  sender: Chan,
+  receiver: Chan,
+): Promise<void> {
   const receiverNumber = receiver.phoneNumber as string;
   // Veterano usa o estilo A; novato usa o estilo B (só para variar o tom).
   const persona =
     ((config.veteranIds ?? []).includes(sender.id) ? config.personaA : config.personaB) ?? '';
 
-  const history = await recentHistory(session.channelIds, sender.id);
+  // Histórico apenas deste par → o papo tem continuidade real.
+  const history = await recentHistory([sender.id, receiver.id], sender.id);
   const text = await generateMessage(session.tenantId, config, persona, history);
 
   // "digitando…" antes de mandar (tempo proporcional ao tamanho).
@@ -402,8 +393,55 @@ export async function runBeat(session: SessionRow, config: WarmupConfig): Promis
     });
   }
 
-  await maybeDeleteOrReact(config, session.channelIds);
-  return true;
+  await maybeDeleteOrReact(config, [sender.id, receiver.id]);
+}
+
+/**
+ * Conduz uma conversa entre um par sorteado do pool: eles trocam mensagens
+ * ALTERNANDO a direção (A→B→A→B…), como um papo de verdade, respeitando o
+ * intervalo aleatório entre mensagens. Retorna quantas mensagens foram enviadas.
+ */
+export async function runConversation(
+  session: SessionRow,
+  config: WarmupConfig,
+  opts: { maxMessages: number },
+): Promise<number> {
+  if (session.channelIds.length < 2) {
+    logger.warn({ sessionId: session.id }, 'aquecimento: pool precisa de 2+ canais');
+    return 0;
+  }
+  const connected = await connectedPool(session.channelIds);
+  if (connected.length < 2) {
+    logger.warn({ sessionId: session.id }, 'aquecimento: 2+ canais precisam estar conectados');
+    return 0;
+  }
+
+  let [sender, receiver] = choosePair(
+    connected,
+    config.veteranIds ?? [],
+    lastPairKey.get(session.id),
+  );
+  lastPairKey.set(session.id, pairKey(sender.id, receiver.id));
+
+  const max = Math.max(1, opts.maxMessages);
+  let sent = 0;
+  for (let i = 0; i < max; i += 1) {
+    try {
+      await sendOneMessage(session, config, sender, receiver);
+    } catch (err) {
+      logger.error({ err, sessionId: session.id }, 'aquecimento: falha ao enviar mensagem');
+      break;
+    }
+    sent += 1;
+    // Alterna a direção → o outro chip "responde".
+    [sender, receiver] = [receiver, sender];
+    if (i < max - 1) {
+      const span = Math.max(config.maxIntervalSec, config.minIntervalSec) - config.minIntervalSec;
+      const waitSec = config.minIntervalSec + Math.random() * span;
+      await sleep(Math.max(3, waitSec) * 1000);
+    }
+  }
+  return sent;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,10 +453,10 @@ let timer: NodeJS.Timeout | null = null;
 const activeRunners = new Set<string>();
 
 /**
- * Conduz a conversa de UMA sessão enquanto a janela estiver ativa: envia uma
- * mensagem, espera o intervalo aleatório (min–max s) e repete, alternando os
- * chips do pool. Para quando a janela fecha, bate o teto do dia ou a sessão é
- * pausada. Isso dá um fluxo contínuo e natural (não 1 msg por minuto).
+ * Conduz a conversa de UMA sessão enquanto a janela estiver ativa: os chips
+ * trocam mensagens em blocos (papo alternado A→B→A→B), respeitando o intervalo
+ * aleatório e o teto diário (com ramp-up). Para quando a janela fecha, bate o
+ * teto do dia ou a sessão é pausada. Isso dá um fluxo contínuo e natural.
  */
 async function runSessionLoop(sessionId: string): Promise<void> {
   if (activeRunners.has(sessionId)) return;
@@ -449,31 +487,30 @@ async function runSessionLoop(sessionId: string): Promise<void> {
       const today = todayStr(now, config.timezone);
       const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
       const ageDays = Math.floor((now.getTime() - s.createdAt.getTime()) / 86_400_000);
-      if (beatsToday >= dailyCap(config, ageDays)) break;
+      const remaining = dailyCap(config, ageDays) - beatsToday;
+      if (remaining <= 0) break;
 
-      let sent = false;
+      // Bloco de conversa de 3 a 6 mensagens (sem passar do teto do dia).
+      const streak = Math.min(remaining, 3 + Math.floor(Math.random() * 4));
+      let sent = 0;
       try {
-        sent = await runBeat(
-          {
-            id: s.id,
-            tenantId: s.tenantId,
-            channelIds: resolvePool(s),
-            beatsToday,
-            beatsDate: today,
-          },
+        sent = await runConversation(
+          { id: s.id, tenantId: s.tenantId, channelIds: resolvePool(s) },
           config,
+          { maxMessages: streak },
         );
       } catch (err) {
-        logger.error({ err, sessionId }, 'aquecimento: falha no beat');
+        logger.error({ err, sessionId }, 'aquecimento: falha na conversa');
       }
       // Não conseguiu enviar (ex.: chips desconectados) — para e tenta no próximo tick.
-      if (!sent) break;
+      if (sent === 0) break;
 
       await prisma.warmupSession.update({
         where: { id: s.id },
-        data: { lastBeatAt: new Date(), beatsToday: beatsToday + 1, beatsDate: today },
+        data: { lastBeatAt: new Date(), beatsToday: beatsToday + sent, beatsDate: today },
       });
 
+      // Pausa entre blocos de conversa.
       const span = Math.max(config.maxIntervalSec, config.minIntervalSec) - config.minIntervalSec;
       const waitSec = config.minIntervalSec + Math.random() * span;
       await sleep(Math.max(3, waitSec) * 1000);
@@ -481,6 +518,59 @@ async function runSessionLoop(sessionId: string): Promise<void> {
   } finally {
     activeRunners.delete(sessionId);
   }
+}
+
+/** Roda uma conversa de teste em background (botão "Testar agora"). */
+async function runTestConversation(sessionId: string): Promise<void> {
+  if (activeRunners.has(sessionId)) return;
+  activeRunners.add(sessionId);
+  try {
+    const s = await prisma.warmupSession.findFirst({
+      where: { id: sessionId, deletedAt: null },
+      select: {
+        id: true,
+        tenantId: true,
+        channelIds: true,
+        channelAId: true,
+        channelBId: true,
+        config: true,
+        beatsToday: true,
+        beatsDate: true,
+      },
+    });
+    if (!s) return;
+    const config = parseConfig(s.config);
+    const today = todayStr(new Date(), config.timezone);
+    const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
+    // Teste ignora janela/teto: envia um papo curto para você ver funcionando.
+    const sent = await runConversation(
+      { id: s.id, tenantId: s.tenantId, channelIds: resolvePool(s) },
+      config,
+      { maxMessages: 6 },
+    );
+    if (sent > 0) {
+      await prisma.warmupSession.update({
+        where: { id: s.id },
+        data: { lastBeatAt: new Date(), beatsToday: beatsToday + sent, beatsDate: today },
+      });
+    }
+  } catch (err) {
+    logger.error({ err, sessionId }, 'aquecimento: falha na conversa de teste');
+  } finally {
+    activeRunners.delete(sessionId);
+  }
+}
+
+/**
+ * Dispara uma conversa de teste em background (não bloqueia a requisição HTTP,
+ * pois o papo leva alguns minutos). Retorna false se já houver um papo rodando.
+ */
+export function startTestConversation(sessionId: string, tenantId: string): boolean {
+  if (activeRunners.has(sessionId)) return false;
+  void runWithTenant(tenantId, () => runTestConversation(sessionId)).catch((err) =>
+    logger.error({ err, sessionId }, 'aquecimento: falha ao iniciar conversa de teste'),
+  );
+  return true;
 }
 
 /** A cada minuto, garante que cada sessão RUNNING em janela ativa tenha um loop. */

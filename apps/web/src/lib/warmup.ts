@@ -88,7 +88,9 @@ export function setSessionStatus(id: string, status: 'RUNNING' | 'PAUSED'): Prom
   });
 }
 
-export function runSessionNow(id: string): Promise<{ sent: boolean }> {
+export function runSessionNow(
+  id: string,
+): Promise<{ started: boolean; connected: number; message: string }> {
   return authFetch(`/warmup/sessions/${id}/run`, { method: 'POST' });
 }
 
