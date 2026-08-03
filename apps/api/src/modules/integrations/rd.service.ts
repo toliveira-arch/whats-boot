@@ -199,13 +199,12 @@ export async function handleRdWebhook(
         text,
         authorType: 'AI',
       });
-      // Se NÃO for pra o SDR assumir, desliga a IA nessa conversa.
-      if (!integ.handoffToSdr) {
-        await prisma.conversation.update({
-          where: { id: sent.conversationId },
-          data: { aiEnabled: false },
-        });
-      }
+      // Marca a origem como CRM (a trava do robô só atende leads origin='CRM')
+      // e, se NÃO for pra o SDR assumir, desliga a IA nessa conversa.
+      await prisma.conversation.update({
+        where: { id: sent.conversationId },
+        data: { origin: 'CRM', ...(integ.handoffToSdr ? {} : { aiEnabled: false }) },
+      });
       await logEvent('SENT', channel.name);
       // Faz o novo lead aparecer no CRM ao vivo.
       broadcastToTenant(integ.tenantId, 'crm.updated', {

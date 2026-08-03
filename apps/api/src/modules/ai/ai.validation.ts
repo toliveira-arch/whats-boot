@@ -44,6 +44,7 @@ const qualification = z
     campaigns: z.array(qualCampaign).default([]),
     notifyCloser: z.boolean().optional(),
     closerTemplate: z.string().max(2000).optional(),
+    onlyCrmLeads: z.boolean().optional(),
   })
   .optional();
 

@@ -119,6 +119,19 @@ export function QualificationEditor({ value, onChange }: Props) {
         <span>Ativar qualificação automática</span>
       </label>
 
+      <label className="ai-toggle">
+        <input
+          type="checkbox"
+          checked={value.onlyCrmLeads ?? true}
+          onChange={(e) => set('onlyCrmLeads', e.target.checked)}
+        />
+        <span>🔒 Responder apenas leads que entraram pelo CRM / RD Station</span>
+      </label>
+      <p className="sub small">
+        Com a trava ligada, o robô só atende quem entrou como <strong>lead</strong> (RD Station,
+        lead de teste ou CRM). Mensagens de números que chegam por conta própria são ignoradas.
+      </p>
+
       {value.enabled && (
         <>
           <div className="grid2">

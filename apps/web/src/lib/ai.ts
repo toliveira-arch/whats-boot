@@ -37,6 +37,7 @@ export interface QualConfig {
   campaigns: QualCampaign[];
   notifyCloser?: boolean;
   closerTemplate?: string;
+  onlyCrmLeads?: boolean;
 }
 
 export const DEFAULT_CLOSER_TEMPLATE = [
@@ -118,6 +119,7 @@ export function emptyQualConfig(): QualConfig {
     campaigns: [],
     notifyCloser: true,
     closerTemplate: DEFAULT_CLOSER_TEMPLATE,
+    onlyCrmLeads: true,
   };
 }
 

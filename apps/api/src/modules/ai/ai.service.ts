@@ -246,6 +246,16 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   const agent = await resolveAgentForCompany(conversation.companyId);
   if (!agent || !agent.isActive) return { skipped: 'agent-disabled' };
 
+  // TRAVA: por padrão o robô só atende leads que entraram pelo CRM/RD Station
+  // (origin='CRM'). Contatos orgânicos (alguém que mandou msg no número) são
+  // ignorados. Conversas já engajadas (com veredito) continuam sendo atendidas
+  // para não cortar um atendimento em andamento. Desligável por empresa na IA.
+  const qCfg = (agent.qualification as { onlyCrmLeads?: boolean } | null) ?? null;
+  const onlyCrmLeads = qCfg?.onlyCrmLeads ?? true;
+  if (onlyCrmLeads && conversation.origin !== 'CRM' && conversation.leadVerdict == null) {
+    return { skipped: 'not-crm-lead' };
+  }
+
   // Modo efetivo: a conversa pode sobrescrever o modo global do agente.
   const effectiveMode =
     conversation.aiMode && conversation.aiMode !== 'OFF' ? conversation.aiMode : agent.mode;

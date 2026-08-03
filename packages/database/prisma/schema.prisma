@@ -1042,6 +1042,7 @@ model Conversation {
   leadVerdict         String? // IN_PROGRESS | QUALIFIED | DISQUALIFIED (pré-qualificação SDR)
   qualification       Json? // campanha detectada, dados coletados, resumo, interesse/urgência
   crmStage            String? // etapa do funil CRM (manual); null = derivado do veredito
+  origin              String               @default("INBOUND") // INBOUND (contato orgânico) | CRM (entrou via RD/lead de teste/CRM)
   unreadCount         Int                  @default(0)
   isPinned            Boolean              @default(false)
   isArchived          Boolean              @default(false)

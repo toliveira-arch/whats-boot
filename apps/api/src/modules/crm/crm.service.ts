@@ -235,10 +235,11 @@ export async function createTestLead(input: TestLeadInput): Promise<{
     authorType: 'AI',
   });
 
-  // Garante o robô ligado na conversa para qualificar as respostas.
+  // Garante o robô ligado na conversa e marca a origem como CRM (a trava do
+  // robô só atende leads com origin='CRM').
   await prisma.conversation.update({
     where: { id: sent.conversationId },
-    data: { aiEnabled: true },
+    data: { aiEnabled: true, origin: 'CRM' },
   });
 
   // Identifica o card no CRM como lead de teste.
