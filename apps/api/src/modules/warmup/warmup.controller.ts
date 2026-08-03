@@ -30,6 +30,11 @@ export const runNowController = asyncHandler(async (req, res) => {
   res.json(await svc.runNow(req.params.id!));
 });
 
+export const runTimedController = asyncHandler(async (req, res) => {
+  const minutes = Number((req.body as { minutes?: unknown })?.minutes ?? 10);
+  res.json(await svc.runTimed(req.params.id!, minutes));
+});
+
 export const listAssetsController = asyncHandler(async (req, res) => {
   res.json(await svc.listAssets(companyIdOf(req)));
 });

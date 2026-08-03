@@ -864,6 +864,20 @@ h2 {
   gap: 8px;
   margin-top: 6px;
 }
+.wu-free {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.wu-free input {
+  width: 64px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+}
 .wu-chip {
   display: inline-flex;
   align-items: center;

@@ -17,6 +17,7 @@ import {
   listAssetsController,
   listSessionsController,
   runNowController,
+  runTimedController,
   setStatusController,
   updateSessionController,
 } from './warmup.controller';
@@ -38,6 +39,7 @@ warmupRouter.patch(
 );
 warmupRouter.post('/sessions/:id/status', MANAGE, validateBody(statusSchema), setStatusController);
 warmupRouter.post('/sessions/:id/run', MANAGE, runNowController);
+warmupRouter.post('/sessions/:id/run-timed', MANAGE, runTimedController);
 warmupRouter.delete('/sessions/:id', MANAGE, deleteSessionController);
 
 // Galeria de imagens

@@ -394,6 +394,7 @@ function SessionCard({
   setMsg: (m: string | null) => void;
 }) {
   const [config, setConfig] = useState<WarmupConfig>(session.config);
+  const [freeMin, setFreeMin] = useState(10);
   const running = session.status === 'RUNNING';
   const allConnected = session.channels.every((c) => c.connected);
   const veteranIds = config.veteranIds ?? [];
@@ -431,6 +432,16 @@ function SessionCard({
       if (r.started) onChanged();
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Erro no teste');
+    }
+  }
+  async function runTimed() {
+    setMsg(`Iniciando conversa livre por ${freeMin} min…`);
+    try {
+      const r = await wu.runSessionTimed(session.id, freeMin);
+      setMsg(r.message);
+      if (r.started) onChanged();
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Erro ao iniciar conversa');
     }
   }
   async function remove() {
@@ -484,6 +495,19 @@ function SessionCard({
         <button type="button" className="btn ghost sm" onClick={() => void test()}>
           Testar agora
         </button>
+        <span className="wu-free">
+          <input
+            type="number"
+            min={1}
+            max={120}
+            value={freeMin}
+            onChange={(e) => setFreeMin(Math.max(1, Math.min(120, Number(e.target.value) || 1)))}
+            title="Duração em minutos"
+          />
+          <button type="button" className="btn ghost sm" onClick={() => void runTimed()}>
+            Conversar {freeMin} min agora
+          </button>
+        </span>
         <span className="nav-spacer" />
         <button type="button" className="btn danger sm" onClick={() => void remove()}>
           Excluir

@@ -573,6 +573,79 @@ export function startTestConversation(sessionId: string, tenantId: string): bool
   return true;
 }
 
+/** Conversa livre por um tempo (ignora janela e teto do dia) — validação manual. */
+async function runTimedConversation(sessionId: string, deadline: number): Promise<void> {
+  if (activeRunners.has(sessionId)) return;
+  activeRunners.add(sessionId);
+  try {
+    for (;;) {
+      if (Date.now() >= deadline) break;
+      const s = await prisma.warmupSession.findFirst({
+        where: { id: sessionId, deletedAt: null },
+        select: {
+          id: true,
+          tenantId: true,
+          channelIds: true,
+          channelAId: true,
+          channelBId: true,
+          config: true,
+          beatsToday: true,
+          beatsDate: true,
+        },
+      });
+      if (!s) break;
+      const config = parseConfig(s.config);
+      const today = todayStr(new Date(), config.timezone);
+      const beatsToday = s.beatsDate === today ? s.beatsToday : 0;
+
+      const streak = 3 + Math.floor(Math.random() * 4); // 3–6 msgs por bloco
+      let sent = 0;
+      try {
+        sent = await runConversation(
+          { id: s.id, tenantId: s.tenantId, channelIds: resolvePool(s) },
+          config,
+          { maxMessages: streak },
+        );
+      } catch (err) {
+        logger.error({ err, sessionId }, 'aquecimento: falha na conversa livre');
+      }
+      if (sent === 0) break; // sem 2 chips conectados, etc.
+
+      await prisma.warmupSession.update({
+        where: { id: s.id },
+        data: { lastBeatAt: new Date(), beatsToday: beatsToday + sent, beatsDate: today },
+      });
+
+      if (Date.now() >= deadline) break;
+      const span = Math.max(config.maxIntervalSec, config.minIntervalSec) - config.minIntervalSec;
+      const waitSec = config.minIntervalSec + Math.random() * span;
+      await sleep(Math.max(3, waitSec) * 1000);
+    }
+  } catch (err) {
+    logger.error({ err, sessionId }, 'aquecimento: falha na conversa livre');
+  } finally {
+    activeRunners.delete(sessionId);
+  }
+}
+
+/**
+ * Inicia uma conversa livre por `minutes` minutos em background (ignora as
+ * janelas e o teto do dia). Retorna false se já houver um papo em andamento.
+ */
+export function startTimedConversation(
+  sessionId: string,
+  tenantId: string,
+  minutes: number,
+): boolean {
+  if (activeRunners.has(sessionId)) return false;
+  const clamped = Math.max(1, Math.min(120, Math.floor(minutes)));
+  const deadline = Date.now() + clamped * 60_000;
+  void runWithTenant(tenantId, () => runTimedConversation(sessionId, deadline)).catch((err) =>
+    logger.error({ err, sessionId }, 'aquecimento: falha ao iniciar conversa livre'),
+  );
+  return true;
+}
+
 /** A cada minuto, garante que cada sessão RUNNING em janela ativa tenha um loop. */
 export async function tickWarmup(now = new Date()): Promise<void> {
   const sessions = await runAsSystem(() =>

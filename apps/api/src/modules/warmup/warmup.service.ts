@@ -6,6 +6,7 @@ import {
   parseConfig,
   resolvePool,
   startTestConversation,
+  startTimedConversation,
   type WarmupConfig,
 } from './warmup.engine';
 
@@ -179,6 +180,39 @@ export async function runNow(id: string) {
     connected,
     message: started
       ? 'Conversa de teste iniciada — os chips vão trocar algumas mensagens. Acompanhe no Chat.'
+      : 'Já existe uma conversa em andamento nesta sessão. Aguarde terminar.',
+  };
+}
+
+/**
+ * Botão "Conversar por X minutos agora": papo livre por um tempo, ignorando as
+ * janelas e o teto do dia. Útil para validar rapidamente por um período maior.
+ */
+export async function runTimed(id: string, minutes: number) {
+  const s = await prisma.warmupSession.findFirst({ where: { id, deletedAt: null } });
+  if (!s) throw new HttpError(404, 'Sessão não encontrada');
+  const mins = Math.max(1, Math.min(120, Math.floor(Number(minutes) || 0)));
+  const pool = resolvePool(s);
+  const channels = await prisma.evolutionInstance.findMany({
+    where: { id: { in: pool }, deletedAt: null },
+    select: { status: true, phoneNumber: true },
+  });
+  const connected = channels.filter((c) => c.status === 'CONNECTED' && c.phoneNumber).length;
+  if (connected < 2) {
+    return {
+      started: false,
+      connected,
+      minutes: mins,
+      message: 'Conecte ao menos 2 chips do pool (menu Canais) para conversar.',
+    };
+  }
+  const started = startTimedConversation(s.id, s.tenantId, mins);
+  return {
+    started,
+    connected,
+    minutes: mins,
+    message: started
+      ? `Conversa livre iniciada por ${mins} min — os chips vão conversar entre si. Acompanhe no Chat.`
       : 'Já existe uma conversa em andamento nesta sessão. Aguarde terminar.',
   };
 }

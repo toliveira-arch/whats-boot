@@ -94,6 +94,16 @@ export function runSessionNow(
   return authFetch(`/warmup/sessions/${id}/run`, { method: 'POST' });
 }
 
+export function runSessionTimed(
+  id: string,
+  minutes: number,
+): Promise<{ started: boolean; connected: number; minutes: number; message: string }> {
+  return authFetch(`/warmup/sessions/${id}/run-timed`, {
+    method: 'POST',
+    body: JSON.stringify({ minutes }),
+  });
+}
+
 export function deleteSession(id: string): Promise<{ ok: boolean }> {
   return authFetch(`/warmup/sessions/${id}`, { method: 'DELETE' });
 }
