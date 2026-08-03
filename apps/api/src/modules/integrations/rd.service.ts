@@ -4,6 +4,7 @@ import { env } from '../../config/env';
 import { logger } from '../../lib/logger';
 import { getTenantContext } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
+import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
 
 function tenantId(): string {
@@ -206,6 +207,11 @@ export async function handleRdWebhook(
         });
       }
       await logEvent('SENT', channel.name);
+      // Faz o novo lead aparecer no CRM ao vivo.
+      broadcastToTenant(integ.tenantId, 'crm.updated', {
+        conversationId: sent.conversationId,
+        stage: 'NEW',
+      });
       return { status: 'sent' };
     } catch (err) {
       logger.error({ err, integrationId: integ.id }, 'falha ao disparar mensagem RD Station');

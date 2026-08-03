@@ -2,6 +2,7 @@ import { prisma, getTenantContext } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
 import { broadcastToTenant } from '../../realtime/emitter';
 import { recordEvent } from '../events/events.service';
+import * as messaging from '../evolution/messaging.service';
 
 function tenantId(): string {
   const id = getTenantContext()?.tenantId;
@@ -163,6 +164,107 @@ export async function setStage(conversationId: string, stage: string): Promise<L
     },
   });
   return toLead(row!);
+}
+
+// ---------------------------------------------------------------------------
+// Lead de teste — simula um novo lead (como se viesse do RD Station) e faz o
+// robô disparar o contato imediato. Serve para validar a ponta a ponta:
+// entra o lead → aparece no CRM → robô manda a 1ª mensagem no WhatsApp.
+// ---------------------------------------------------------------------------
+
+/** Normaliza telefone BR: só dígitos, com DDI 55. */
+function normalizeBrPhone(raw: string): string | null {
+  const d = raw.replace(/\D/g, '');
+  if (!d) return null;
+  if (d.startsWith('55') && d.length >= 12) return d;
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  return d;
+}
+
+export interface TestLeadInput {
+  phone: string;
+  name?: string;
+  companyId?: string | null;
+}
+
+export async function createTestLead(input: TestLeadInput): Promise<{
+  status: string;
+  conversationId: string;
+  channel: string;
+  phone: string;
+}> {
+  const phone = normalizeBrPhone(input.phone ?? '');
+  if (!phone) throw new HttpError(400, 'Informe um telefone válido para o lead de teste.');
+
+  // Precisa de um canal CONECTADO para o robô conseguir enviar de fato.
+  const channel = await prisma.evolutionInstance.findFirst({
+    where: {
+      deletedAt: null,
+      status: 'CONNECTED',
+      ...(input.companyId ? { companyId: input.companyId } : {}),
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, name: true, companyId: true, tenantId: true },
+  });
+  if (!channel) {
+    throw new HttpError(
+      400,
+      input.companyId
+        ? 'Nenhum canal do WhatsApp conectado para esta empresa. Conecte um canal em Canais.'
+        : 'Nenhum canal do WhatsApp conectado. Conecte um canal em Canais antes de testar.',
+    );
+  }
+
+  // Mensagem de abertura: usa a da integração RD da empresa, se houver.
+  const integ = await prisma.rdIntegration.findFirst({
+    where: { deletedAt: null, companyId: channel.companyId },
+    select: { openingMessage: true },
+  });
+  const displayName = input.name?.trim() || 'Lead de teste';
+  const firstName = input.name?.trim() || 'tudo bem';
+  const template =
+    integ?.openingMessage?.trim() ||
+    'Olá {{nome}}! Recebemos seu contato e queremos te ajudar. Podemos falar rapidinho por aqui? 😊';
+  const text = template.replace(/\{\{\s*nome\s*\}\}/gi, firstName);
+
+  const sent = await messaging.sendText({
+    tenantId: channel.tenantId,
+    channelId: channel.id,
+    number: phone,
+    text,
+    authorType: 'AI',
+  });
+
+  // Garante o robô ligado na conversa para qualificar as respostas.
+  await prisma.conversation.update({
+    where: { id: sent.conversationId },
+    data: { aiEnabled: true },
+  });
+
+  // Identifica o card no CRM como lead de teste.
+  const conv = await prisma.conversation.findFirst({
+    where: { id: sent.conversationId },
+    select: { contactId: true },
+  });
+  if (conv) {
+    await prisma.contact.update({
+      where: { id: conv.contactId },
+      data: { name: displayName },
+    });
+  }
+
+  await recordEvent({
+    conversationId: sent.conversationId,
+    type: 'CREATED',
+    data: { source: 'crm-test-lead', channel: channel.name },
+  });
+
+  broadcastToTenant(channel.tenantId, 'crm.updated', {
+    conversationId: sent.conversationId,
+    stage: 'NEW',
+  });
+
+  return { status: 'sent', conversationId: sent.conversationId, channel: channel.name, phone };
 }
 
 function csvCell(v: unknown): string {

@@ -19,6 +19,18 @@ export const setStageController = asyncHandler(async (req, res) => {
   res.json(await crm.setStage(req.params.id!, String(req.body?.stage ?? '')));
 });
 
+export const testLeadController = asyncHandler(async (req, res) => {
+  const body = (req.body ?? {}) as { phone?: unknown; name?: unknown; companyId?: unknown };
+  res.json(
+    await crm.createTestLead({
+      phone: String(body.phone ?? ''),
+      name: typeof body.name === 'string' ? body.name : undefined,
+      companyId:
+        typeof body.companyId === 'string' && body.companyId.trim() ? body.companyId : null,
+    }),
+  );
+});
+
 export const exportController = asyncHandler(async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
   const csv = await crm.exportCsv({ companyId: companyIdOf(req), q });

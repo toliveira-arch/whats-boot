@@ -46,6 +46,21 @@ export function setStage(id: string, stage: string): Promise<Lead> {
   return authFetch(`/crm/leads/${id}/stage`, { method: 'PATCH', body: JSON.stringify({ stage }) });
 }
 
+export interface TestLeadResult {
+  status: string;
+  conversationId: string;
+  channel: string;
+  phone: string;
+}
+
+export function createTestLead(input: {
+  phone: string;
+  name?: string;
+  companyId?: string | null;
+}): Promise<TestLeadResult> {
+  return authFetch('/crm/test-lead', { method: 'POST', body: JSON.stringify(input) });
+}
+
 /** Baixa o CSV de leads (respeitando empresa/busca). */
 export async function downloadCsv(companyId?: string | null, search?: string): Promise<void> {
   const res = await fetch(`${API_URL}/crm/export${q(companyId, search)}`, {

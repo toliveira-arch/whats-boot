@@ -7,6 +7,7 @@ import {
   listLeadsController,
   setStageController,
   stagesController,
+  testLeadController,
 } from './crm.controller';
 
 export const crmRouter = Router();
@@ -18,4 +19,5 @@ const WRITE = requirePermissions('conversations.write');
 crmRouter.get('/stages', READ, stagesController);
 crmRouter.get('/leads', READ, listLeadsController);
 crmRouter.get('/export', READ, exportController);
+crmRouter.post('/test-lead', WRITE, testLeadController);
 crmRouter.patch('/leads/:id/stage', WRITE, setStageController);

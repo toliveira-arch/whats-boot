@@ -52,6 +52,9 @@ export function Crm() {
   const [search, setSearch] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [testPhone, setTestPhone] = useState('5511993064913');
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     listCompanies()
@@ -117,6 +120,30 @@ export function Crm() {
     }
   }
 
+  async function genTestLead() {
+    setTestMsg(null);
+    setTesting(true);
+    try {
+      const r = await crm.createTestLead({
+        phone: testPhone,
+        name: 'Lead de teste',
+        companyId: companyId || undefined,
+      });
+      setTestMsg({
+        ok: true,
+        text: `Robô disparou a 1ª mensagem para ${r.phone} pelo canal "${r.channel}". O lead entrou no CRM em "Lead Novo".`,
+      });
+      load();
+    } catch (err) {
+      setTestMsg({
+        ok: false,
+        text: err instanceof ApiError ? err.message : 'Falha ao gerar lead de teste.',
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
+
   const byStage = (key: string) => leads.filter((l) => l.stage === key);
 
   return (
@@ -159,6 +186,22 @@ export function Crm() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <span className="sub">{leads.length} leads</span>
+      </div>
+
+      <div className="crm-testlead">
+        <div className="crm-testlead-row">
+          <span className="sub">🧪 Testar atendimento do robô:</span>
+          <input
+            className="crm-testlead-phone"
+            placeholder="55 11 99999-9999"
+            value={testPhone}
+            onChange={(e) => setTestPhone(e.target.value)}
+          />
+          <button className="btn sm" disabled={testing} onClick={() => void genTestLead()}>
+            {testing ? 'Enviando…' : 'Gerar lead teste'}
+          </button>
+        </div>
+        {testMsg && <div className={testMsg.ok ? 'crm-testlead-ok' : 'error'}>{testMsg.text}</div>}
       </div>
 
       {view === 'kanban' ? (
