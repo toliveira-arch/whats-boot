@@ -50,11 +50,30 @@ async function request<T = unknown>(
   apikey: string,
   body?: unknown,
 ): Promise<T> {
-  const res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json', apikey },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const url = `${baseUrl.replace(/\/$/, '')}${path}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', apikey },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    // Falha de rede/DNS/TLS ou timeout — mensagem clara para o painel.
+    const reason =
+      err instanceof Error && err.name === 'AbortError'
+        ? 'tempo esgotado (o servidor não respondeu em 15s)'
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    logger.warn({ url, reason }, 'falha de rede ao chamar a Evolution API');
+    throw new EvolutionError(0, `Não foi possível alcançar o servidor: ${reason}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const text = await res.text();
   let data: unknown = text;

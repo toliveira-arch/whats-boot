@@ -27,8 +27,14 @@ function rawFetch(path: string, init: RequestInit = {}): Promise<Response> {
 
 async function messageOf(res: Response): Promise<string> {
   try {
-    const data = (await res.json()) as { message?: string };
-    return data.message ?? res.statusText;
+    const data = (await res.json()) as { message?: string; details?: unknown };
+    const base = data.message ?? res.statusText;
+    // Anexa o motivo real quando o backend envia details.cause (ex.: erro da Evolution API).
+    const cause =
+      data.details && typeof data.details === 'object'
+        ? (data.details as { cause?: unknown }).cause
+        : undefined;
+    return cause ? `${base} — ${String(cause)}` : base;
   } catch {
     return res.statusText;
   }
