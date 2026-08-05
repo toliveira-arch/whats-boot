@@ -1113,6 +1113,72 @@ h2 {
   font-weight: 800;
 }
 
+/* ===================== Painel de tarefas ===================== */
+.task-card {
+  cursor: default;
+}
+.task-card:active {
+  cursor: default;
+}
+.task-done .crm-card-top strong,
+tr.task-done strong {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.task-overdue {
+  font-size: 11px;
+  color: var(--err);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.task-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.task-del {
+  margin-left: auto;
+}
+.task-form {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.task-form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+}
+.task-form-grid input,
+.task-form-grid select,
+.task-form-grid textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+.task-form-title {
+  grid-column: 1 / 2;
+}
+.task-form-notes {
+  grid-column: 1 / -1;
+  resize: vertical;
+}
+@media (max-width: 720px) {
+  .task-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .task-form-title {
+    grid-column: auto;
+  }
+}
+
 /* ===================== Follow-up ===================== */
 .fu-step {
   border: 1px solid var(--border);

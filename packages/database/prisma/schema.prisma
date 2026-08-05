@@ -796,6 +796,7 @@ model Company {
   conversations      Conversation[]
   messages           Message[]
   tags               Tag[]
+  followUps          FollowUp[]
   appointments       Appointment[]
   scheduledMessages  ScheduledMessage[]
   aiAgents           AiAgent[]
@@ -1239,7 +1240,8 @@ model Note {
 model FollowUp {
   id             String         @id @default(cuid())
   tenantId       String
-  contactId      String
+  companyId      String? // empresa (cliente) da tarefa — filtro do painel
+  contactId      String? // lead vinculado (opcional: tarefa avulsa)
   conversationId String?
   assignedToId   String?
   createdById    String?
@@ -1253,12 +1255,14 @@ model FollowUp {
   deletedAt      DateTime?
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contact      Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company      Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
   conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   assignedTo   Membership?   @relation("FollowUpAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdBy    Membership?   @relation("FollowUpCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
+  @@index([companyId])
   @@index([contactId])
   @@index([assignedToId])
   @@index([dueAt])

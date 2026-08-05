@@ -51,6 +51,9 @@ export function AppLayout() {
         <NavLink to="/crm" className={linkClass}>
           CRM
         </NavLink>
+        <NavLink to="/tasks" className={linkClass}>
+          Tarefas
+        </NavLink>
         <NavLink to="/companies" className={linkClass}>
           Empresas
         </NavLink>
