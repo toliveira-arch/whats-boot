@@ -25,16 +25,20 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
-  const statusCode = err instanceof HttpError ? err.statusCode : 500;
+  // Erro vindo da Evolution API (upstream): não é falha nossa — mostra o motivo
+  // real em vez de "Erro interno" para o painel poder diagnosticar.
+  const isEvolution = err instanceof Error && err.name === 'EvolutionError';
+  const statusCode = err instanceof HttpError ? err.statusCode : isEvolution ? 502 : 500;
   const message = err instanceof Error ? err.message : 'Erro interno';
 
-  if (statusCode >= 500) {
+  if (statusCode >= 500 && !isEvolution) {
     logger.error({ err }, 'erro não tratado');
   }
 
+  const hide = statusCode >= 500 && isProduction && !isEvolution;
   res.status(statusCode).json({
-    error: statusCode >= 500 ? 'internal_error' : 'request_error',
-    message: statusCode >= 500 && isProduction ? 'Erro interno' : message,
-    details: err instanceof HttpError ? err.details : undefined,
+    error: statusCode >= 500 && !isEvolution ? 'internal_error' : 'request_error',
+    message: hide ? 'Erro interno' : isEvolution ? `Evolution API: ${message}` : message,
+    details: err instanceof HttpError ? err.details : isEvolution ? { cause: message } : undefined,
   });
 }
