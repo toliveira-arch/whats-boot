@@ -73,6 +73,11 @@ export interface DispatchInput {
   handoffToSdr: boolean;
   /** ID externo do card (ex.: UUID do card no Foresee) para a saída depois. */
   externalCardId?: string | null;
+  /** Contexto de entrada (RD Marketing etc.) para atendimento consultivo. */
+  company?: string | null;
+  campaign?: string | null;
+  form?: string | null;
+  source?: string | null;
 }
 
 /** Procura o UUID do card no payload (campo configurado ou chaves comuns). */
@@ -147,7 +152,27 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
     return { status: 'skipped', detail: 'already-contacted' };
   }
 
-  const text = input.openingMessage.replace(/\{\{\s*nome\s*\}\}/gi, input.name ?? 'tudo bem');
+  // Variáveis na abertura: {{nome}}, {{campanha}}, {{formulario}}, {{empresa}}.
+  const vars: Record<string, string> = {
+    nome: input.name ?? 'tudo bem',
+    campanha: input.campaign ?? '',
+    formulario: input.form ?? '',
+    empresa: input.company ?? '',
+  };
+  const text = input.openingMessage.replace(
+    /\{\{\s*(\w+)\s*\}\}/g,
+    (_m, k: string) => vars[k.toLowerCase()] ?? '',
+  );
+  // Contexto de entrada para o robô conduzir de forma consultiva por campanha.
+  const entry =
+    input.campaign || input.form || input.source || input.company
+      ? {
+          campaign: input.campaign ?? null,
+          form: input.form ?? null,
+          source: input.source ?? null,
+          company: input.company ?? null,
+        }
+      : null;
   try {
     const sent = await messaging.sendText({
       tenantId: input.tenantId,
@@ -164,6 +189,7 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
         origin: 'CRM',
         ...(input.handoffToSdr ? {} : { aiEnabled: false }),
         ...(input.externalCardId ? { metadata: { foreseeCardId: input.externalCardId } } : {}),
+        ...(entry ? { qualification: { entry } } : {}),
       },
     });
     broadcastToTenant(input.tenantId, 'crm.updated', {

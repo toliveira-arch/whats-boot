@@ -107,28 +107,65 @@ interface ExtractedLead {
   name: string | null;
   email: string | null;
   phone: string | null;
+  company: string | null;
+  campaign: string | null;
+  form: string | null;
+  source: string | null;
 }
 
+function pickFrom(obj: Record<string, unknown> | undefined, ...keys: string[]): string | null {
+  if (!obj) return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (typeof v === 'number') return String(v);
+  }
+  return null;
+}
+
+/**
+ * Extrai os dados do lead do RD Marketing, INCLUINDO campanha/origem/formulário
+ * (last_conversion/first_conversion.conversion_origin) — o que dá o contexto
+ * para o atendimento consultivo por campanha.
+ */
 function extractLead(payload: Record<string, unknown>): ExtractedLead {
-  const p = payload as Record<string, unknown>;
+  const p = payload;
   const leadsArr = p.leads as Record<string, unknown>[] | undefined;
   const lead = (leadsArr?.[0] ??
     (p.lead as Record<string, unknown>) ??
     (p.contact as Record<string, unknown>) ??
     p) as Record<string, unknown>;
 
-  const pick = (...keys: string[]): string | null => {
-    for (const k of keys) {
-      const v = lead[k];
-      if (typeof v === 'string' && v.trim()) return v.trim();
-    }
-    return null;
+  const lc = (lead.last_conversion as Record<string, unknown> | undefined) ?? {};
+  const fc = (lead.first_conversion as Record<string, unknown> | undefined) ?? {};
+  const content = {
+    ...((fc.content as Record<string, unknown> | undefined) ?? {}),
+    ...((lc.content as Record<string, unknown> | undefined) ?? {}),
   };
+  const lcOrigin = (lc.conversion_origin as Record<string, unknown> | undefined) ?? {};
+  const fcOrigin = (fc.conversion_origin as Record<string, unknown> | undefined) ?? {};
 
   return {
-    name: pick('name', 'nome', 'first_name'),
-    email: pick('email', 'e-mail'),
-    phone: pick('mobile_phone', 'personal_phone', 'phone', 'telefone', 'celular', 'whatsapp'),
+    name: pickFrom(lead, 'name', 'nome', 'first_name') ?? pickFrom(content, 'nome', 'name'),
+    email: pickFrom(lead, 'email', 'e-mail') ?? pickFrom(content, 'email', 'email_lead'),
+    phone:
+      pickFrom(
+        lead,
+        'mobile_phone',
+        'personal_phone',
+        'phone',
+        'telefone',
+        'celular',
+        'whatsapp',
+      ) ?? pickFrom(content, 'telefone', 'phone', 'celular', 'whatsapp', 'phone_lead'),
+    company: pickFrom(lead, 'company') ?? pickFrom(content, 'empresa'),
+    campaign: pickFrom(lcOrigin, 'campaign') ?? pickFrom(fcOrigin, 'campaign'),
+    form:
+      pickFrom(lc, 'source') ??
+      pickFrom(content, 'identificador') ??
+      pickFrom(fc, 'source') ??
+      pickFrom(fcOrigin, 'source'),
+    source: pickFrom(lcOrigin, 'source') ?? pickFrom(fcOrigin, 'source'),
   };
 }
 
@@ -179,6 +216,10 @@ export async function handleRdWebhook(
       phone,
       openingMessage: integ.openingMessage,
       handoffToSdr: integ.handoffToSdr,
+      company: lead.company,
+      campaign: lead.campaign,
+      form: lead.form,
+      source: lead.source,
     });
     if (result.status === 'sent') {
       await logEvent('SENT', result.detail);
