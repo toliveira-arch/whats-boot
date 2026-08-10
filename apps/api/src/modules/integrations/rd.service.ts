@@ -188,7 +188,30 @@ function semAcento(s: string): string {
     .trim();
 }
 
-const DEFAULT_PAID_SOURCES = ['facebook ads', 'instagram ads', 'google ads', 'meta ads'];
+const DEFAULT_PAID_SOURCES = [
+  // Meta / Facebook / Instagram
+  'facebook ads',
+  'facebook lead ads',
+  'facebook leads',
+  'fb ads',
+  'fb',
+  'instagram ads',
+  'instagram lead ads',
+  'ig ads',
+  'ig',
+  'meta ads',
+  'meta lead ads',
+  'meta',
+  // Google
+  'google ads',
+  'google adwords',
+  'adwords',
+  // Genéricos de tráfego pago
+  'lead ads',
+  'cpc',
+  'paid',
+  'trafego pago',
+];
 
 /** Verifica se a origem é mídia paga (aceita lista custom via csv). */
 function isPaidMedia(source: string | null, allowedCsv: string | null): boolean {
