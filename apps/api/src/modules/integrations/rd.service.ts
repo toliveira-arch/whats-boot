@@ -122,6 +122,42 @@ interface ExtractedLead {
   campaign: string | null;
   form: string | null;
   source: string | null;
+  /** Dados já respondidos no formulário do RD (faturamento, regime, cnpj…). */
+  collected: Record<string, string>;
+}
+
+/** Deixa o valor do formulário legível: "de_r$_50_mil" -> "de r$ 50 mil". */
+function readable(v: unknown): string {
+  return String(v ?? '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Mapeia os campos do formulário do RD para as chaves canônicas de qualificação
+ * (faturamento, regime, cnpj, ramo, decisor, dor). Assim o robô NÃO repergunta.
+ */
+function extractFormFields(content: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(content)) {
+    if (typeof v !== 'string' && typeof v !== 'number') continue;
+    const val = readable(v);
+    if (!val) continue;
+    const key = String(k)
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    if (key.includes('faturamento') && !out.faturamento) out.faturamento = val;
+    else if (key.includes('regime') && !out.regime) out.regime = val;
+    else if (key.includes('cnpj') && !out.cnpj) out.cnpj = val;
+    else if ((key.includes('ramo') || key.includes('segmento')) && !out.ramo) out.ramo = val;
+    else if (key.includes('decisor') && !out.decisor) out.decisor = val;
+    else if ((key.includes('dor') || key.includes('necessidade')) && !out.dor) out.dor = val;
+    else if ((key.includes('funcion') || key.includes('colaborad')) && !out.funcionarios)
+      out.funcionarios = val;
+  }
+  return out;
 }
 
 function pickFrom(obj: Record<string, unknown> | undefined, ...keys: string[]): string | null {
@@ -177,6 +213,7 @@ function extractLead(payload: Record<string, unknown>): ExtractedLead {
       pickFrom(fc, 'source') ??
       pickFrom(fcOrigin, 'source'),
     source: pickFrom(lcOrigin, 'source') ?? pickFrom(fcOrigin, 'source'),
+    collected: extractFormFields(content),
   };
 }
 
@@ -318,6 +355,7 @@ export async function handleRdWebhook(
       form: lead.form,
       source: lead.source,
       campaignType: tipo || null,
+      collected: Object.keys(lead.collected).length ? lead.collected : null,
     });
     if (result.status === 'sent') {
       await logEvent('SENT', result.detail);

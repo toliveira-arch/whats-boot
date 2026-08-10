@@ -79,6 +79,8 @@ export interface DispatchInput {
   form?: string | null;
   source?: string | null;
   campaignType?: string | null;
+  /** Dados já respondidos no formulário (faturamento, regime, cnpj…). */
+  collected?: Record<string, unknown> | null;
 }
 
 /** Procura o UUID do card no payload (campo configurado ou chaves comuns). */
@@ -191,7 +193,9 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
         origin: 'CRM',
         ...(input.handoffToSdr ? {} : { aiEnabled: false }),
         ...(input.externalCardId ? { metadata: { foreseeCardId: input.externalCardId } } : {}),
-        ...(entry ? { qualification: { entry } } : {}),
+        ...(entry || (input.collected && Object.keys(input.collected).length)
+          ? { qualification: { entry, collected: input.collected ?? {} } }
+          : {}),
       },
     });
     broadcastToTenant(input.tenantId, 'crm.updated', {
