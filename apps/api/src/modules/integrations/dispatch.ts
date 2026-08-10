@@ -3,6 +3,56 @@ import { logger } from '../../lib/logger';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
 
+export interface ExtractedLead {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+/**
+ * Extrai nome/email/telefone de um payload flexível (RD Station, Foresee e
+ * outros CRMs via webhook): procura em leads[0]/lead/contact/raiz e aceita
+ * várias chaves de telefone.
+ */
+export function extractLeadFromPayload(payload: Record<string, unknown>): ExtractedLead {
+  const p = payload;
+  const leadsArr = p.leads as Record<string, unknown>[] | undefined;
+  const lead = (leadsArr?.[0] ??
+    (p.lead as Record<string, unknown>) ??
+    (p.contact as Record<string, unknown>) ??
+    (p.data as Record<string, unknown>) ??
+    p) as Record<string, unknown>;
+
+  const pick = (obj: Record<string, unknown>, ...keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = obj?.[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      if (typeof v === 'number') return String(v);
+    }
+    return null;
+  };
+
+  const phoneKeys = [
+    'mobile_phone',
+    'personal_phone',
+    'phone',
+    'telefone',
+    'celular',
+    'whatsapp',
+    'whatsApp',
+    'telefone_celular',
+    'fone',
+    'phone_number',
+  ];
+  return {
+    name:
+      pick(lead, 'name', 'nome', 'first_name', 'nome_completo', 'contact_name') ??
+      pick(p, 'name', 'nome'),
+    email: pick(lead, 'email', 'e-mail', 'mail') ?? pick(p, 'email'),
+    phone: pick(lead, ...phoneKeys) ?? pick(p, ...phoneKeys),
+  };
+}
+
 /** Normaliza telefone BR: só dígitos, com DDI 55. */
 export function normalizeBrPhone(raw: unknown): string | null {
   if (!raw) return null;

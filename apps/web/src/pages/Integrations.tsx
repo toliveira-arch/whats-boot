@@ -5,9 +5,10 @@ import { listChannels, type Channel } from '../lib/channels';
 import { listCompanies, type Company } from '../lib/companies';
 import { ApiError } from '../lib/api';
 import { KommoPanel } from '../components/KommoPanel';
+import { WebhookPanel } from '../components/WebhookPanel';
 
 export function Integrations() {
-  const [provider, setProvider] = useState<'rd' | 'kommo'>('rd');
+  const [provider, setProvider] = useState<'rd' | 'kommo' | 'foresee'>('rd');
   const [integ, setInteg] = useState<RdIntegration | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [events, setEvents] = useState<RdEvent[]>([]);
@@ -111,6 +112,12 @@ export function Integrations() {
         >
           Kommo
         </button>
+        <button
+          className={`btn ${provider === 'foresee' ? '' : 'ghost'} sm`}
+          onClick={() => setProvider('foresee')}
+        >
+          Foresee
+        </button>
       </div>
       {provider === 'rd' && msg && (
         <div className="error" style={{ borderColor: 'var(--accent)' }}>
@@ -145,6 +152,10 @@ export function Integrations() {
 
       {provider === 'kommo' && companyId && (
         <KommoPanel companyId={companyId} channels={channels} />
+      )}
+
+      {provider === 'foresee' && companyId && (
+        <WebhookPanel companyId={companyId} channels={channels} />
       )}
 
       {provider === 'rd' &&

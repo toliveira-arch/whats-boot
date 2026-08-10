@@ -340,6 +340,8 @@ model Tenant {
   rdLeadEvents        RdLeadEvent[]
   kommoIntegrations   KommoIntegration[]
   kommoLeadEvents     KommoLeadEvent[]
+  webhookIntegrations WebhookIntegration[]
+  webhookLeadEvents   WebhookLeadEvent[]
   warmupSessions      WarmupSession[]
   warmupAssets        WarmupAsset[]
   followUpSequences   FollowUpSequence[]
@@ -487,6 +489,44 @@ model KommoIntegration {
 }
 
 model KommoLeadEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  integrationId String
+  name          String?
+  phone         String?
+  email         String?
+  status        String // RECEIVED | SENT | SKIPPED | FAILED
+  detail        String?
+  payload       Json?
+  createdAt     DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([integrationId])
+}
+
+model WebhookIntegration {
+  id             String    @id @default(cuid())
+  tenantId       String
+  companyId      String? // integração por empresa (cliente)
+  label          String    @default("Webhook") // rótulo (ex.: Foresee)
+  enabled        Boolean   @default(false)
+  webhookToken   String    @unique
+  channelId      String? // EvolutionInstance que dispara as mensagens
+  openingMessage String    @default("Olá {{nome}}, tudo bem?")
+  handoffToSdr   Boolean   @default(true)
+  sourceFilter   String? // só puxa leads cujo payload contenha este texto; vazio = todos
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model WebhookLeadEvent {
   id            String   @id @default(cuid())
   tenantId      String
   integrationId String

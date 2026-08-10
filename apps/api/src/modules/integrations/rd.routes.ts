@@ -19,11 +19,20 @@ import {
   regenerateKommoController,
   updateKommoController,
 } from './kommo.controller';
+import { webhookConfigSchema } from './webhook.validation';
+import {
+  genericWebhookController,
+  getWebhookController,
+  regenerateWebhookController,
+  updateWebhookController,
+  webhookEventsController,
+} from './webhook.controller';
 
 /** Rota PÚBLICA do webhook (autenticada pelo token no path). */
 export const rdWebhookRouter = Router();
 rdWebhookRouter.post('/rdstation/webhook/:token', rdWebhookController);
 rdWebhookRouter.post('/kommo/webhook/:token', kommoWebhookController);
+rdWebhookRouter.post('/webhook/:token', genericWebhookController);
 
 /** Rotas de configuração (autenticadas). */
 export const integrationsRouter = Router();
@@ -41,3 +50,13 @@ integrationsRouter.get('/kommo', READ, getKommoController);
 integrationsRouter.put('/kommo', MANAGE, validateBody(kommoConfigSchema), updateKommoController);
 integrationsRouter.post('/kommo/regenerate', MANAGE, regenerateKommoController);
 integrationsRouter.get('/kommo/events', READ, kommoEventsController);
+
+integrationsRouter.get('/webhook', READ, getWebhookController);
+integrationsRouter.put(
+  '/webhook',
+  MANAGE,
+  validateBody(webhookConfigSchema),
+  updateWebhookController,
+);
+integrationsRouter.post('/webhook/regenerate', MANAGE, regenerateWebhookController);
+integrationsRouter.get('/webhook/events', READ, webhookEventsController);
