@@ -45,6 +45,7 @@ const qualification = z
     notifyCloser: z.boolean().optional(),
     closerTemplate: z.string().max(2000).optional(),
     onlyCrmLeads: z.boolean().optional(),
+    promptDriven: z.boolean().optional(),
   })
   .optional();
 

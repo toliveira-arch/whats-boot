@@ -38,6 +38,7 @@ export interface QualConfig {
   notifyCloser?: boolean;
   closerTemplate?: string;
   onlyCrmLeads?: boolean;
+  promptDriven?: boolean;
 }
 
 export const DEFAULT_CLOSER_TEMPLATE = [
@@ -120,6 +121,7 @@ export function emptyQualConfig(): QualConfig {
     notifyCloser: true,
     closerTemplate: DEFAULT_CLOSER_TEMPLATE,
     onlyCrmLeads: true,
+    promptDriven: false,
   };
 }
 

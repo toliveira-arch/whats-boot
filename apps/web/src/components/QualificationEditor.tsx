@@ -132,6 +132,20 @@ export function QualificationEditor({ value, onChange }: Props) {
         lead de teste ou CRM). Mensagens de números que chegam por conta própria são ignoradas.
       </p>
 
+      <label className="ai-toggle">
+        <input
+          type="checkbox"
+          checked={value.promptDriven ?? false}
+          onChange={(e) => set('promptDriven', e.target.checked)}
+        />
+        <span>🧠 Qualificação guiada pelo prompt (a IA decide pelo seu texto)</span>
+      </label>
+      <p className="sub small">
+        Ligado: a IA segue o <strong>Prompt do sistema</strong> e decide sozinha o veredito
+        (ENCAMINHAR → Qualificado, DISPENSADO → Desqualificado, CLIENTE_ATIVO). Não usa as campanhas
+        nem o piso abaixo. Ideal quando toda a lógica já está escrita no prompt.
+      </p>
+
       {value.enabled && (
         <>
           <div className="grid2">

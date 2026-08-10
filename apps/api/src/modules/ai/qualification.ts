@@ -43,6 +43,11 @@ export interface QualConfig {
   // Notificação do closer (comercial da empresa) quando o lead é MQL.
   notifyCloser?: boolean;
   closerTemplate?: string;
+  // Trava: robô só atende leads que entraram pelo CRM/RD (origin=CRM).
+  onlyCrmLeads?: boolean;
+  // Qualificação guiada pelo prompt: a IA decide o veredito pelo texto do
+  // prompt (sem gate/campanhas estruturadas).
+  promptDriven?: boolean;
 }
 
 /** Modelo padrão da notificação enviada ao closer sobre um lead qualificado. */
@@ -68,6 +73,8 @@ export interface QualLlmOutput {
   interest?: string;
   urgency?: string;
   summary?: string;
+  /** Veredito sugerido pela IA (modo guiado por prompt). */
+  verdict?: string;
 }
 
 export type LeadVerdict = 'IN_PROGRESS' | 'QUALIFIED' | 'DISQUALIFIED';
