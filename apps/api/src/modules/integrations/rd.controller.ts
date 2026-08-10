@@ -8,6 +8,10 @@ function present(integ: {
   channelId: string | null;
   openingMessage: string;
   handoffToSdr: boolean;
+  paidMediaOnly: boolean;
+  allowedSources: string | null;
+  campaignMap: string | null;
+  openingsJson: string | null;
 }) {
   return {
     id: integ.id,
@@ -15,6 +19,10 @@ function present(integ: {
     channelId: integ.channelId,
     openingMessage: integ.openingMessage,
     handoffToSdr: integ.handoffToSdr,
+    paidMediaOnly: integ.paidMediaOnly,
+    allowedSources: integ.allowedSources ?? '',
+    campaignMap: integ.campaignMap ?? '',
+    openingsJson: integ.openingsJson ?? '',
     webhookUrl: rd.rdWebhookUrl(integ.webhookToken),
   };
 }

@@ -78,6 +78,7 @@ export interface DispatchInput {
   campaign?: string | null;
   form?: string | null;
   source?: string | null;
+  campaignType?: string | null;
 }
 
 /** Procura o UUID do card no payload (campo configurado ou chaves comuns). */
@@ -165,12 +166,13 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
   );
   // Contexto de entrada para o robô conduzir de forma consultiva por campanha.
   const entry =
-    input.campaign || input.form || input.source || input.company
+    input.campaign || input.form || input.source || input.company || input.campaignType
       ? {
           campaign: input.campaign ?? null,
           form: input.form ?? null,
           source: input.source ?? null,
           company: input.company ?? null,
+          type: input.campaignType ?? null,
         }
       : null;
   try {

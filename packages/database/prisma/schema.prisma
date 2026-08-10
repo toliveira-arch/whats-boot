@@ -361,6 +361,10 @@ model RdIntegration {
   channelId      String? // EvolutionInstance que dispara as mensagens
   openingMessage String    @default("Olá {{nome}}, tudo bem?")
   handoffToSdr   Boolean   @default(true)
+  paidMediaOnly  Boolean   @default(false) // descarta lead que não veio de anúncio
+  allowedSources String? // origens de mídia paga aceitas (csv); vazio = padrão
+  campaignMap    String? // "trecho=tipo" por linha (ex.: troca de contabilidade=troca)
+  openingsJson   String? // JSON { tipo: [mensagens] } — aberturas por tipo de campanha
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?

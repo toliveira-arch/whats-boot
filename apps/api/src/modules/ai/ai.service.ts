@@ -452,16 +452,18 @@ async function runQualification(input: {
         form?: string | null;
         source?: string | null;
         company?: string | null;
+        type?: string | null;
       } | null;
     } | null) ?? {};
   const prevCollected = prev.collected ?? {};
   const entry = prev.entry ?? null;
 
-  // Contexto de entrada (campanha/formulário) — dá o atendimento consultivo.
+  // Contexto de entrada (campanha/formulário/tipo) — dá o atendimento consultivo.
   // O robô NUNCA pergunta de qual campanha o lead veio; ele já sabe daqui.
   const entryContext =
-    entry && (entry.campaign || entry.form || entry.company)
+    entry && (entry.campaign || entry.form || entry.company || entry.type)
       ? `CONTEXTO DE ENTRADA DO LEAD (use para conduzir de forma consultiva; NUNCA pergunte de qual campanha/anúncio ele veio): ${[
+          entry.type ? `tipo="${entry.type}" (siga o roteiro deste tipo)` : '',
           entry.campaign ? `campanha="${entry.campaign}"` : '',
           entry.form ? `formulário="${entry.form}"` : '',
           entry.company ? `empresa="${entry.company}"` : '',

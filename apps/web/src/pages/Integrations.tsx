@@ -62,6 +62,10 @@ export function Integrations() {
           channelId: integ.channelId,
           openingMessage: integ.openingMessage,
           handoffToSdr: integ.handoffToSdr,
+          paidMediaOnly: integ.paidMediaOnly,
+          allowedSources: integ.allowedSources,
+          campaignMap: integ.campaignMap,
+          openingsJson: integ.openingsJson,
         },
         companyId,
       );
@@ -225,11 +229,60 @@ export function Integrations() {
                 </label>
               </div>
               <label className="field">
-                <span>Mensagem de abertura (use {'{{nome}}'} para o nome do lead)</span>
+                <span>
+                  Mensagem de abertura padrão — variáveis: {'{{nome}} {{campanha}} {{formulario}}'}{' '}
+                  {'{{empresa}}'} (usada quando a campanha não cai no mapa abaixo)
+                </span>
                 <textarea
                   rows={3}
                   value={integ.openingMessage}
                   onChange={(e) => set('openingMessage', e.target.value)}
+                />
+              </label>
+              <button className="btn" onClick={() => void save()}>
+                Salvar
+              </button>
+            </div>
+
+            <div className="card-form">
+              <h2>Mídia paga & campanhas (consultivo)</h2>
+              <label className="ai-toggle">
+                <input
+                  type="checkbox"
+                  checked={integ.paidMediaOnly}
+                  onChange={(e) => set('paidMediaOnly', e.target.checked)}
+                />
+                <span>Só atender leads de anúncio (descarta o que não é mídia paga)</span>
+              </label>
+              <label className="field">
+                <span>Origens aceitas (vírgula) — vazio = Facebook/Instagram/Google/Meta Ads</span>
+                <input
+                  value={integ.allowedSources}
+                  onChange={(e) => set('allowedSources', e.target.value)}
+                  placeholder="Facebook Ads, Instagram Ads, Google Ads, Meta Ads"
+                />
+              </label>
+              <label className="field">
+                <span>Mapa de campanha (uma por linha, no formato trecho=tipo)</span>
+                <textarea
+                  rows={5}
+                  value={integ.campaignMap}
+                  onChange={(e) => set('campaignMap', e.target.value)}
+                  placeholder={'troca de contabilidade=troca\nrestaurante=restaurante\nbpo=bpo'}
+                />
+              </label>
+              <label className="field">
+                <span>
+                  Aberturas por tipo (JSON) — {'{"troca":["..."],"restaurante":["..."],'}
+                  {'"bpo":["..."],"generico":["..."]}'}; use {'{{nome}}'}
+                </span>
+                <textarea
+                  rows={6}
+                  value={integ.openingsJson}
+                  onChange={(e) => set('openingsJson', e.target.value)}
+                  placeholder={
+                    '{\n  "troca": ["Oi {{nome}}! ..."],\n  "generico": ["Oi {{nome}}! ..."]\n}'
+                  }
                 />
               </label>
               <button className="btn" onClick={() => void save()}>

@@ -6,6 +6,10 @@ export interface RdIntegration {
   channelId: string | null;
   openingMessage: string;
   handoffToSdr: boolean;
+  paidMediaOnly: boolean;
+  allowedSources: string;
+  campaignMap: string;
+  openingsJson: string;
   webhookUrl: string;
 }
 
@@ -20,7 +24,17 @@ export interface RdEvent {
 }
 
 export type RdConfigInput = Partial<
-  Pick<RdIntegration, 'enabled' | 'channelId' | 'openingMessage' | 'handoffToSdr'>
+  Pick<
+    RdIntegration,
+    | 'enabled'
+    | 'channelId'
+    | 'openingMessage'
+    | 'handoffToSdr'
+    | 'paidMediaOnly'
+    | 'allowedSources'
+    | 'campaignMap'
+    | 'openingsJson'
+  >
 >;
 
 function companyQuery(companyId?: string | null): string {

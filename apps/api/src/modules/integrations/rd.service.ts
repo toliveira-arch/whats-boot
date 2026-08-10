@@ -48,10 +48,15 @@ export interface RdConfigInput {
   channelId?: string | null;
   openingMessage?: string;
   handoffToSdr?: boolean;
+  paidMediaOnly?: boolean;
+  allowedSources?: string | null;
+  campaignMap?: string | null;
+  openingsJson?: string | null;
 }
 
 export async function upsertIntegration(companyId: string | null, input: RdConfigInput) {
   const integ = await getIntegration(companyId);
+  const clean = (v: string | null | undefined) => (v === undefined ? undefined : v ? v : null);
   return prisma.rdIntegration.update({
     where: { id: integ.id },
     data: {
@@ -59,6 +64,12 @@ export async function upsertIntegration(companyId: string | null, input: RdConfi
       ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
       ...(input.openingMessage !== undefined ? { openingMessage: input.openingMessage } : {}),
       ...(input.handoffToSdr !== undefined ? { handoffToSdr: input.handoffToSdr } : {}),
+      ...(input.paidMediaOnly !== undefined ? { paidMediaOnly: input.paidMediaOnly } : {}),
+      ...(input.allowedSources !== undefined
+        ? { allowedSources: clean(input.allowedSources) }
+        : {}),
+      ...(input.campaignMap !== undefined ? { campaignMap: clean(input.campaignMap) } : {}),
+      ...(input.openingsJson !== undefined ? { openingsJson: clean(input.openingsJson) } : {}),
     },
   });
 }
@@ -169,6 +180,59 @@ function extractLead(payload: Record<string, unknown>): ExtractedLead {
   };
 }
 
+function semAcento(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+const DEFAULT_PAID_SOURCES = ['facebook ads', 'instagram ads', 'google ads', 'meta ads'];
+
+/** Verifica se a origem é mídia paga (aceita lista custom via csv). */
+function isPaidMedia(source: string | null, allowedCsv: string | null): boolean {
+  const allowed = (allowedCsv ? allowedCsv.split(',') : DEFAULT_PAID_SOURCES)
+    .map((s) => semAcento(s))
+    .filter(Boolean);
+  const src = semAcento(source ?? '');
+  if (!src) return false;
+  return allowed.some((a) => src === a || src.includes(a));
+}
+
+/** Classifica o tipo da campanha pelo mapa "trecho=tipo" (por linha). '' = genérico. */
+function classifyCampaign(campaign: string, form: string, mapText: string | null): string {
+  if (!mapText) return '';
+  const fonte = semAcento(`${campaign} ${form}`);
+  for (const line of mapText.split(/\r?\n/)) {
+    const [chave, tipo] = line.split('=').map((x) => x.trim());
+    if (chave && tipo && fonte.includes(semAcento(chave))) return semAcento(tipo);
+  }
+  return '';
+}
+
+/** Escolhe uma abertura por tipo (JSON { tipo: [msgs] }), com {{nome}} etc. */
+function pickOpening(
+  openingsJson: string | null,
+  tipo: string,
+  nome: string | null,
+): string | null {
+  if (!openingsJson) return null;
+  let pools: Record<string, string[]>;
+  try {
+    pools = JSON.parse(openingsJson) as Record<string, string[]>;
+  } catch {
+    return null;
+  }
+  const pool = pools[tipo] ?? pools['generico'] ?? pools['generic'];
+  if (!Array.isArray(pool) || pool.length === 0) return null;
+  // Escolha estável sem Math.random dependente: usa o tamanho + nome pra variar.
+  const idx = Math.abs((nome ?? '').length + Date.now()) % pool.length;
+  const raw = pool[idx] ?? pool[0]!;
+  const primeiro = (nome ?? '').split(' ')[0] ?? '';
+  return raw.replace(/\{\{\s*nome\s*\}\}/gi, primeiro || 'tudo bem');
+}
+
 /** Processa um webhook do RD Station. `token` identifica o tenant/integração. */
 export async function handleRdWebhook(
   token: string,
@@ -206,6 +270,16 @@ export async function handleRdWebhook(
       return { status: 'skipped', detail: 'no-phone' };
     }
 
+    // FILTRO DE MÍDIA PAGA: descarta o que não vem de anúncio.
+    if (integ.paidMediaOnly && !isPaidMedia(lead.source, integ.allowedSources)) {
+      await logEvent('SKIPPED', `fora da mídia paga (origem: ${lead.source || 'vazia'})`);
+      return { status: 'skipped', detail: 'not-paid-media' };
+    }
+
+    // Classifica a campanha (mapa) e escolhe a abertura consultiva por tipo.
+    const tipo = classifyCampaign(lead.campaign ?? '', lead.form ?? '', integ.campaignMap);
+    const opening = pickOpening(integ.openingsJson, tipo, lead.name) ?? integ.openingMessage;
+
     // Núcleo compartilhado (escolhe canal, dispara, marca origin=CRM, entra no
     // CRM ao vivo) + trava anti-duplicidade da 1ª mensagem.
     const result = await dispatchLead({
@@ -214,12 +288,13 @@ export async function handleRdWebhook(
       channelId: integ.channelId,
       name: lead.name,
       phone,
-      openingMessage: integ.openingMessage,
+      openingMessage: opening,
       handoffToSdr: integ.handoffToSdr,
       company: lead.company,
       campaign: lead.campaign,
       form: lead.form,
       source: lead.source,
+      campaignType: tipo || null,
     });
     if (result.status === 'sent') {
       await logEvent('SENT', result.detail);
