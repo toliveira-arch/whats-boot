@@ -10,6 +10,12 @@ function present(integ: {
   openingMessage: string;
   handoffToSdr: boolean;
   sourceFilter: string | null;
+  apiBaseUrl: string | null;
+  apiUserUuid: string | null;
+  apiTokenEnc: string | null;
+  cardIdField: string | null;
+  qualifiedRespUuid: string | null;
+  qualifiedTemp: string | null;
 }) {
   return {
     id: integ.id,
@@ -19,6 +25,12 @@ function present(integ: {
     openingMessage: integ.openingMessage,
     handoffToSdr: integ.handoffToSdr,
     sourceFilter: integ.sourceFilter ?? '',
+    apiBaseUrl: integ.apiBaseUrl ?? '',
+    apiUserUuid: integ.apiUserUuid ?? '',
+    hasToken: Boolean(integ.apiTokenEnc),
+    cardIdField: integ.cardIdField ?? '',
+    qualifiedRespUuid: integ.qualifiedRespUuid ?? '',
+    qualifiedTemp: integ.qualifiedTemp ?? '',
     webhookUrl: webhook.genericWebhookUrl(integ.webhookToken),
   };
 }

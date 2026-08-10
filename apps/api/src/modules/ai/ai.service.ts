@@ -6,6 +6,7 @@ import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
 import { recordEvent } from '../events/events.service';
 import { buildKnowledgePrompt } from '../knowledge/knowledge.service';
+import { updateForeseeCardOnQualify } from '../integrations/webhook.service';
 import { getProvider, supportedProviders, type LlmMessage, type LlmProvider } from './providers';
 import {
   canonicalizeCollected,
@@ -701,6 +702,10 @@ async function runQualification(input: {
   // Padrão LIGADO: só não notifica se o toggle foi explicitamente desligado.
   if (verdict === 'QUALIFIED' && config.notifyCloser !== false) {
     await notifyCloser({ tid, conversation, config, collected: mergedCollected, out, qualState });
+  }
+  // SAÍDA Foresee: atualiza o card (temperatura/responsável) ao qualificar.
+  if (verdict === 'QUALIFIED' && prevVerdict !== 'QUALIFIED') {
+    void updateForeseeCardOnQualify(conversationId, conversation.companyId).catch(() => undefined);
   }
 
   if (!outboundText) return { skipped: 'empty', verdict };

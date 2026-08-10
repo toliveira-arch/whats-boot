@@ -8,6 +8,12 @@ export interface WebhookIntegration {
   openingMessage: string;
   handoffToSdr: boolean;
   sourceFilter: string;
+  apiBaseUrl: string;
+  apiUserUuid: string;
+  hasToken: boolean;
+  cardIdField: string;
+  qualifiedRespUuid: string;
+  qualifiedTemp: string;
   webhookUrl: string;
 }
 
@@ -28,6 +34,12 @@ export interface WebhookConfigInput {
   handoffToSdr?: boolean;
   sourceFilter?: string | null;
   label?: string;
+  apiBaseUrl?: string | null;
+  apiUserUuid?: string | null;
+  apiToken?: string | null;
+  cardIdField?: string | null;
+  qualifiedRespUuid?: string | null;
+  qualifiedTemp?: string | null;
 }
 
 function companyQuery(companyId?: string | null): string {

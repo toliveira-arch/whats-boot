@@ -9,6 +9,7 @@ export function WebhookPanel({ companyId, channels }: { companyId: string; chann
   const [events, setEvents] = useState<WebhookEvent[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
 
   const load = useCallback(() => {
     if (!companyId) return;
@@ -22,6 +23,7 @@ export function WebhookPanel({ companyId, channels }: { companyId: string; chann
 
   useEffect(() => {
     setInteg(null);
+    setTokenInput('');
     load();
   }, [companyId, load]);
 
@@ -41,10 +43,17 @@ export function WebhookPanel({ companyId, channels }: { companyId: string; chann
           handoffToSdr: integ.handoffToSdr,
           sourceFilter: integ.sourceFilter,
           label: integ.label,
+          apiBaseUrl: integ.apiBaseUrl,
+          apiUserUuid: integ.apiUserUuid,
+          cardIdField: integ.cardIdField,
+          qualifiedRespUuid: integ.qualifiedRespUuid,
+          qualifiedTemp: integ.qualifiedTemp,
+          ...(tokenInput.trim() ? { apiToken: tokenInput.trim() } : {}),
         },
         companyId,
       );
       setInteg(saved);
+      setTokenInput('');
       setMsg('Configuração salva ✅');
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Erro ao salvar');
@@ -164,6 +173,70 @@ export function WebhookPanel({ companyId, channels }: { companyId: string; chann
             onChange={(e) => set('openingMessage', e.target.value)}
           />
         </label>
+        <button className="btn" onClick={() => void save()}>
+          Salvar
+        </button>
+      </div>
+
+      <div className="card-form">
+        <h2>Saída — atualizar o card no Foresee (opcional)</h2>
+        <p className="sub small">
+          Quando o robô <strong>qualificar</strong> o lead, atualizamos o card no Foresee via API (
+          <code>/api/v1/cards/update</code>) — temperatura e/ou responsável. Mover de etapa não é
+          possível pela API do Foresee (bloqueado por CSRF); faça isso por automação interna no
+          Foresee (ex.: temperatura = quente → mover etapa).
+        </p>
+        <div className="grid2">
+          <label className="field">
+            <span>URL base da API do Foresee</span>
+            <input
+              value={integ.apiBaseUrl}
+              onChange={(e) => set('apiBaseUrl', e.target.value)}
+              placeholder="https://app.foresee..."
+            />
+          </label>
+          <label className="field">
+            <span>X-User-Uuid</span>
+            <input
+              value={integ.apiUserUuid}
+              onChange={(e) => set('apiUserUuid', e.target.value)}
+              placeholder="uuid do usuário"
+            />
+          </label>
+          <label className="field">
+            <span>Token da API {integ.hasToken ? '(salvo — preencha p/ trocar)' : ''}</span>
+            <input
+              type="password"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder={integ.hasToken ? '•••••••• (mantém o atual)' : 'cole o token da API'}
+            />
+          </label>
+          <label className="field">
+            <span>Campo do UUID do card no webhook (opcional)</span>
+            <input
+              value={integ.cardIdField}
+              onChange={(e) => set('cardIdField', e.target.value)}
+              placeholder="auto (card_uuid, id…)"
+            />
+          </label>
+          <label className="field">
+            <span>Temperatura ao qualificar (opcional)</span>
+            <input
+              value={integ.qualifiedTemp}
+              onChange={(e) => set('qualifiedTemp', e.target.value)}
+              placeholder="ex.: quente"
+            />
+          </label>
+          <label className="field">
+            <span>Responsável ao qualificar — UUID (opcional)</span>
+            <input
+              value={integ.qualifiedRespUuid}
+              onChange={(e) => set('qualifiedRespUuid', e.target.value)}
+              placeholder="uuid do responsável"
+            />
+          </label>
+        </div>
         <button className="btn" onClick={() => void save()}>
           Salvar
         </button>

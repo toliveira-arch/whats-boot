@@ -517,6 +517,13 @@ model WebhookIntegration {
   openingMessage String    @default("Olá {{nome}}, tudo bem?")
   handoffToSdr   Boolean   @default(true)
   sourceFilter   String? // só puxa leads cujo payload contenha este texto; vazio = todos
+  // SAÍDA (atualizar o card no Foresee quando o lead qualifica). Opcional.
+  apiBaseUrl        String? // ex.: https://app.foresee... (host da API do Foresee)
+  apiUserUuid       String? // header X-User-Uuid
+  apiTokenEnc       String? // token da API (criptografado)
+  cardIdField       String? // chave do payload com o UUID do card (auto-detecta se vazio)
+  qualifiedRespUuid String? // responsável a atribuir ao qualificar (UUID)
+  qualifiedTemp     String? // temperatura a definir ao qualificar (ex.: "quente")
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?

@@ -71,6 +71,29 @@ export interface DispatchInput {
   phone: string;
   openingMessage: string;
   handoffToSdr: boolean;
+  /** ID externo do card (ex.: UUID do card no Foresee) para a saída depois. */
+  externalCardId?: string | null;
+}
+
+/** Procura o UUID do card no payload (campo configurado ou chaves comuns). */
+export function extractCardId(
+  payload: Record<string, unknown>,
+  field?: string | null,
+): string | null {
+  const p = payload;
+  const lead = ((p.lead as Record<string, unknown>) ??
+    (p.card as Record<string, unknown>) ??
+    (p.data as Record<string, unknown>) ??
+    p) as Record<string, unknown>;
+  const keys = field
+    ? [field]
+    : ['card_uuid', 'cardUuid', 'card_id', 'cardId', 'card', 'uuid', 'id'];
+  for (const k of keys) {
+    const v = lead?.[k] ?? p?.[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (typeof v === 'number') return String(v);
+  }
+  return null;
 }
 
 export interface DispatchResult {
@@ -106,10 +129,14 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
       authorType: 'AI',
     });
     // Origem CRM (a trava do robô só atende leads assim) e, se não for handoff,
-    // desliga a IA nessa conversa.
+    // desliga a IA nessa conversa. Guarda o ID do card externo (Foresee) para a saída.
     await prisma.conversation.update({
       where: { id: sent.conversationId },
-      data: { origin: 'CRM', ...(input.handoffToSdr ? {} : { aiEnabled: false }) },
+      data: {
+        origin: 'CRM',
+        ...(input.handoffToSdr ? {} : { aiEnabled: false }),
+        ...(input.externalCardId ? { metadata: { foreseeCardId: input.externalCardId } } : {}),
+      },
     });
     broadcastToTenant(input.tenantId, 'crm.updated', {
       conversationId: sent.conversationId,

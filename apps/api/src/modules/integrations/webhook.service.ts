@@ -2,7 +2,9 @@ import crypto from 'node:crypto';
 import { prisma, runAsSystem, runWithTenant, getTenantContext, Prisma } from '@whats-boot/database';
 import { env } from '../../config/env';
 import { HttpError } from '../../middlewares/error';
-import { dispatchLead, extractLeadFromPayload, normalizeBrPhone } from './dispatch';
+import { logger } from '../../lib/logger';
+import { encryptSecret, decryptSecret } from '../../lib/crypto';
+import { dispatchLead, extractCardId, extractLeadFromPayload, normalizeBrPhone } from './dispatch';
 
 function tenantId(): string {
   const id = getTenantContext()?.tenantId;
@@ -44,23 +46,43 @@ export interface WebhookConfigInput {
   handoffToSdr?: boolean;
   sourceFilter?: string | null;
   label?: string;
+  apiBaseUrl?: string | null;
+  apiUserUuid?: string | null;
+  apiToken?: string | null;
+  cardIdField?: string | null;
+  qualifiedRespUuid?: string | null;
+  qualifiedTemp?: string | null;
+}
+
+function cleanOrNull(v: string | null | undefined): string | null | undefined {
+  if (v === undefined) return undefined;
+  return v ? v.trim() : null;
 }
 
 export async function upsertIntegration(companyId: string | null, input: WebhookConfigInput) {
   const integ = await getIntegration(companyId);
-  return prisma.webhookIntegration.update({
-    where: { id: integ.id },
-    data: {
-      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-      ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
-      ...(input.openingMessage !== undefined ? { openingMessage: input.openingMessage } : {}),
-      ...(input.handoffToSdr !== undefined ? { handoffToSdr: input.handoffToSdr } : {}),
-      ...(input.label !== undefined ? { label: input.label.trim() || 'Webhook' } : {}),
-      ...(input.sourceFilter !== undefined
-        ? { sourceFilter: input.sourceFilter ? input.sourceFilter.trim() : null }
-        : {}),
-    },
-  });
+  const data: Prisma.WebhookIntegrationUpdateInput = {
+    ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+    ...(input.channelId !== undefined ? { channelId: input.channelId } : {}),
+    ...(input.openingMessage !== undefined ? { openingMessage: input.openingMessage } : {}),
+    ...(input.handoffToSdr !== undefined ? { handoffToSdr: input.handoffToSdr } : {}),
+    ...(input.label !== undefined ? { label: input.label.trim() || 'Webhook' } : {}),
+    ...(input.sourceFilter !== undefined ? { sourceFilter: cleanOrNull(input.sourceFilter) } : {}),
+    ...(input.apiBaseUrl !== undefined ? { apiBaseUrl: cleanOrNull(input.apiBaseUrl) } : {}),
+    ...(input.apiUserUuid !== undefined ? { apiUserUuid: cleanOrNull(input.apiUserUuid) } : {}),
+    ...(input.cardIdField !== undefined ? { cardIdField: cleanOrNull(input.cardIdField) } : {}),
+    ...(input.qualifiedRespUuid !== undefined
+      ? { qualifiedRespUuid: cleanOrNull(input.qualifiedRespUuid) }
+      : {}),
+    ...(input.qualifiedTemp !== undefined
+      ? { qualifiedTemp: cleanOrNull(input.qualifiedTemp) }
+      : {}),
+  };
+  // Token: string não-vazia → criptografa; string vazia → limpa; undefined → mantém.
+  if (input.apiToken !== undefined) {
+    data.apiTokenEnc = input.apiToken ? encryptSecret(input.apiToken.trim()) : null;
+  }
+  return prisma.webhookIntegration.update({ where: { id: integ.id }, data });
 }
 
 export async function regenerateToken(companyId: string | null) {
@@ -143,6 +165,7 @@ export async function handleGenericWebhook(
       phone,
       openingMessage: integ.openingMessage,
       handoffToSdr: integ.handoffToSdr,
+      externalCardId: extractCardId(payload, integ.cardIdField),
     });
 
     if (result.status === 'sent') {
@@ -152,4 +175,60 @@ export async function handleGenericWebhook(
     await logEvent('FAILED', result.detail);
     return { status: 'failed', detail: result.detail };
   });
+}
+
+/**
+ * SAÍDA: quando o lead é QUALIFICADO, atualiza o card no Foresee via
+ * /api/v1/cards/update (temperatura e/ou responsável). Só roda se a empresa
+ * tiver as credenciais da API e a conversa tiver o UUID do card guardado.
+ * Best-effort: nunca quebra o fluxo; loga a resposta para ajuste fino.
+ */
+export async function updateForeseeCardOnQualify(
+  conversationId: string,
+  companyId: string,
+): Promise<void> {
+  const integ = await prisma.webhookIntegration.findFirst({
+    where: { deletedAt: null, companyId },
+    select: {
+      apiBaseUrl: true,
+      apiUserUuid: true,
+      apiTokenEnc: true,
+      qualifiedRespUuid: true,
+      qualifiedTemp: true,
+    },
+  });
+  if (!integ?.apiBaseUrl || !integ.apiUserUuid || !integ.apiTokenEnc) return;
+
+  const conv = await prisma.conversation.findFirst({
+    where: { id: conversationId },
+    select: { metadata: true },
+  });
+  const cardId = (conv?.metadata as { foreseeCardId?: string } | null)?.foreseeCardId;
+  if (!cardId) return;
+
+  const body: Record<string, unknown> = { uuid: cardId };
+  if (integ.qualifiedTemp) body.temperature = integ.qualifiedTemp;
+  if (integ.qualifiedRespUuid) body.responsible = integ.qualifiedRespUuid;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const res = await fetch(`${integ.apiBaseUrl.replace(/\/$/, '')}/api/v1/cards/update`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${decryptSecret(integ.apiTokenEnc)}`,
+        'X-User-Uuid': integ.apiUserUuid,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+    const text = await res.text();
+    logger.info(
+      { status: res.status, cardId, resp: text?.slice(0, 300) },
+      'foresee: cards/update (saída de lead qualificado)',
+    );
+  } catch (err) {
+    logger.warn({ err, cardId }, 'foresee: falha ao atualizar card');
+  }
 }
