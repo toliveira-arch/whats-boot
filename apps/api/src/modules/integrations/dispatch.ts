@@ -97,8 +97,25 @@ export function extractCardId(
 }
 
 export interface DispatchResult {
-  status: 'sent' | 'failed';
+  status: 'sent' | 'failed' | 'skipped';
   detail?: string;
+}
+
+/** Janela anti-duplicidade da 1ª mensagem (webhook do CRM chega 2x / retries). */
+const DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
+
+async function alreadyContacted(companyId: string, phoneDigits: string): Promise<boolean> {
+  const recent = await prisma.message.findFirst({
+    where: {
+      companyId,
+      direction: 'OUTBOUND',
+      deletedAt: null,
+      createdAt: { gte: new Date(Date.now() - DEDUPE_WINDOW_MS) },
+      contact: { phoneNumber: phoneDigits },
+    },
+    select: { id: true },
+  });
+  return Boolean(recent);
 }
 
 /**
@@ -118,6 +135,17 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
       orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
     }));
   if (!channel) return { status: 'failed', detail: 'no-channel' };
+
+  // Anti-duplicidade: se já mandamos a abertura para este número há pouco
+  // (webhook do CRM repetido / add+status / retry), não manda de novo.
+  const phoneDigits = input.phone.replace(/\D/g, '');
+  if (await alreadyContacted(channel.companyId, phoneDigits)) {
+    logger.info(
+      { phone: phoneDigits, companyId: channel.companyId },
+      'dispatchLead: lead já contatado recentemente — 1ª mensagem duplicada evitada',
+    );
+    return { status: 'skipped', detail: 'already-contacted' };
+  }
 
   const text = input.openingMessage.replace(/\{\{\s*nome\s*\}\}/gi, input.name ?? 'tudo bem');
   try {

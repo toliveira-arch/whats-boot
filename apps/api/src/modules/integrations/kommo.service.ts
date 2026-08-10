@@ -220,6 +220,10 @@ export async function handleKommoWebhook(
       await logEvent('SENT', info, result.detail);
       return { status: 'sent' };
     }
+    if (result.status === 'skipped') {
+      await logEvent('SKIPPED', info, result.detail ?? 'duplicado');
+      return { status: 'skipped', detail: result.detail };
+    }
     await logEvent('FAILED', info, result.detail);
     return { status: 'failed', detail: result.detail };
   });

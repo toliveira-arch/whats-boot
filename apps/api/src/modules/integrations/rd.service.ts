@@ -1,11 +1,9 @@
 import crypto from 'node:crypto';
 import { prisma, runAsSystem, runWithTenant, Prisma } from '@whats-boot/database';
 import { env } from '../../config/env';
-import { logger } from '../../lib/logger';
 import { getTenantContext } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
-import { broadcastToTenant } from '../../realtime/emitter';
-import * as messaging from '../evolution/messaging.service';
+import { dispatchLead } from './dispatch';
 
 function tenantId(): string {
   const id = getTenantContext()?.tenantId;
@@ -171,51 +169,26 @@ export async function handleRdWebhook(
       return { status: 'skipped', detail: 'no-phone' };
     }
 
-    // Canal: o configurado, senão a primeira instância da empresa da integração
-    // (ou qualquer instância, se a integração não estiver vinculada a empresa).
-    const channel =
-      (integ.channelId
-        ? await prisma.evolutionInstance.findFirst({
-            where: { id: integ.channelId, deletedAt: null },
-          })
-        : null) ??
-      (await prisma.evolutionInstance.findFirst({
-        where: { deletedAt: null, ...(integ.companyId ? { companyId: integ.companyId } : {}) },
-        orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
-      }));
-
-    if (!channel) {
-      await logEvent('FAILED', 'nenhum canal WhatsApp disponível');
-      return { status: 'failed', detail: 'no-channel' };
-    }
-
-    const text = integ.openingMessage.replace(/\{\{\s*nome\s*\}\}/gi, lead.name ?? 'tudo bem');
-
-    try {
-      const sent = await messaging.sendText({
-        tenantId: integ.tenantId,
-        channelId: channel.id,
-        number: phone,
-        text,
-        authorType: 'AI',
-      });
-      // Marca a origem como CRM (a trava do robô só atende leads origin='CRM')
-      // e, se NÃO for pra o SDR assumir, desliga a IA nessa conversa.
-      await prisma.conversation.update({
-        where: { id: sent.conversationId },
-        data: { origin: 'CRM', ...(integ.handoffToSdr ? {} : { aiEnabled: false }) },
-      });
-      await logEvent('SENT', channel.name);
-      // Faz o novo lead aparecer no CRM ao vivo.
-      broadcastToTenant(integ.tenantId, 'crm.updated', {
-        conversationId: sent.conversationId,
-        stage: 'NEW',
-      });
+    // Núcleo compartilhado (escolhe canal, dispara, marca origin=CRM, entra no
+    // CRM ao vivo) + trava anti-duplicidade da 1ª mensagem.
+    const result = await dispatchLead({
+      tenantId: integ.tenantId,
+      companyId: integ.companyId,
+      channelId: integ.channelId,
+      name: lead.name,
+      phone,
+      openingMessage: integ.openingMessage,
+      handoffToSdr: integ.handoffToSdr,
+    });
+    if (result.status === 'sent') {
+      await logEvent('SENT', result.detail);
       return { status: 'sent' };
-    } catch (err) {
-      logger.error({ err, integrationId: integ.id }, 'falha ao disparar mensagem RD Station');
-      await logEvent('FAILED', err instanceof Error ? err.message : String(err));
-      return { status: 'failed', detail: 'send-error' };
     }
+    if (result.status === 'skipped') {
+      await logEvent('SKIPPED', result.detail ?? 'duplicado');
+      return { status: 'skipped', detail: result.detail };
+    }
+    await logEvent('FAILED', result.detail);
+    return { status: 'failed', detail: result.detail };
   });
 }

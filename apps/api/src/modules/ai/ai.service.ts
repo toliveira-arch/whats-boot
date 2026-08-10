@@ -478,7 +478,9 @@ async function runQualification(input: {
   const missing = scriptForPrompt.filter((f) => f.required && !hasVal(prevCanonForPrompt[f.key]));
   const nextField = missing[0];
 
-  const promptDriven = config.promptDriven === true;
+  // Guiado por prompt quando explicitamente ligado OU quando não há roteiro
+  // estruturado configurado (evita o robô "fechar" sem qualificar).
+  const promptDriven = config.promptDriven === true || scriptForPrompt.length === 0;
 
   const sys = promptDriven
     ? [

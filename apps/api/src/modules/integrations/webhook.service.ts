@@ -172,6 +172,10 @@ export async function handleGenericWebhook(
       await logEvent('SENT', result.detail);
       return { status: 'sent' };
     }
+    if (result.status === 'skipped') {
+      await logEvent('SKIPPED', result.detail ?? 'duplicado');
+      return { status: 'skipped', detail: result.detail };
+    }
     await logEvent('FAILED', result.detail);
     return { status: 'failed', detail: result.detail };
   });
