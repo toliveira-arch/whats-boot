@@ -205,6 +205,21 @@ Webhook do CRM ─▶ service específico (rd / kommo / webhook)
 - **Sinalização de volta** no Kommo (mover etapa exige IDs de status) e no RD
   (depende de confirmação da API).
 
+### Rodada Neil — próximos blocos (em ordem)
+
+- **Patch B — remover a casca do BullMQ** (execução inline honesta): tirar
+  `enqueueOrRun`/`queues`/`worker.ts` (deploy é serviço único; hoje já roda
+  inline). Redis permanece para Socket.IO/health. A remoção do `jobId` do inbound
+  só entra aqui, e só porque a garantia por estado (`Message.waMessageId @unique`)
+  já existe. **Plano antes de codar.**
+- **Follow-up (DEPOIS do Patch B) — normalização de telefone na ENTRADA do
+  inbound:** o `resolveContactAndConversation` casa o reply do lead por `waJid`
+  **exato**, mas o Baileys às vezes dropa o 9º dígito no JID → o reply não casa
+  com a conversa do CRM (13 díg. com 9) e a trava do robô falha. Corrigir com
+  **match por conjunto de variantes-OR** (mesma família de `normalizeBrPhone`)
+  no lookup de contato/conversa. É o mesmo problema de normalização que o Patch A
+  resolveu na ponta de saída — não pode se perder.
+
 ### Segurança (ação do cliente)
 
 - **Rotacionar** a senha do banco Neon (foi exposta).
