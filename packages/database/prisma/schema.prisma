@@ -1140,6 +1140,7 @@ model Conversation {
   isArchived          Boolean              @default(false)
   archivedAt          DateTime?
   waRemoteJid         String?
+  normalizedPhone     String? // 13 díg. canônico (55+DDD+9) — chave de idempotência da 1ª msg (índice ÚNICO PARCIAL para estados não-terminais criado em prisma/ensure-indexes.sql, pois o Prisma não expressa índice parcial)
   lastMessageAt       DateTime?
   lastInboundAt       DateTime?
   lastOutboundAt      DateTime?
@@ -1170,6 +1171,7 @@ model Conversation {
 
   @@index([tenantId, status])
   @@index([companyId])
+  @@index([companyId, normalizedPhone])
   @@index([contactId])
   @@index([assignedToId])
   @@index([teamId])

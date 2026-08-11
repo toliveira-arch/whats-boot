@@ -1,6 +1,7 @@
-import { prisma } from '@whats-boot/database';
+import { prisma, Prisma } from '@whats-boot/database';
 import { logger } from '../../lib/logger';
 import { broadcastToTenant } from '../../realtime/emitter';
+import { recordEvent } from '../events/events.service';
 import * as messaging from '../evolution/messaging.service';
 
 export interface ExtractedLead {
@@ -53,13 +54,24 @@ export function extractLeadFromPayload(payload: Record<string, unknown>): Extrac
   };
 }
 
-/** Normaliza telefone BR: só dígitos, com DDI 55. */
+/**
+ * Normaliza telefone BR para o canônico de 13 dígitos: DDI 55 + DDD + 9 dígitos.
+ * Idempotente (13 dígitos já canônicos passam intactos). Insere o 9º dígito
+ * apenas para CELULAR (1º dígito local 6–9); NUNCA para fixo, para não corromper.
+ * Regra da rodada: nunca compare telefone cru — sempre passe por aqui primeiro.
+ */
 export function normalizeBrPhone(raw: unknown): string | null {
-  if (!raw) return null;
-  const d = String(raw).replace(/\D/g, '');
+  if (raw == null) return null;
+  let d = String(raw).replace(/\D/g, '');
   if (!d) return null;
-  if (d.startsWith('55') && d.length >= 12) return d;
-  if (d.length === 10 || d.length === 11) return `55${d}`;
+  if (d.startsWith('0055')) d = d.slice(2); // 00 (saída internacional) + 55 → 55
+  if (!d.startsWith('55') && (d.length === 10 || d.length === 11)) d = `55${d}`;
+  // 55 + DDD + 8 dígitos: falta o 9 do celular. Insere só se for celular.
+  if (d.startsWith('55') && d.length === 12) {
+    const ddd = d.slice(2, 4);
+    const local = d.slice(4);
+    if ('6789'.includes(local.charAt(0))) d = `55${ddd}9${local}`;
+  }
   return d;
 }
 
@@ -109,23 +121,6 @@ export interface DispatchResult {
   detail?: string;
 }
 
-/** Janela anti-duplicidade da 1ª mensagem (webhook do CRM chega 2x / retries). */
-const DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
-
-async function alreadyContacted(companyId: string, phoneDigits: string): Promise<boolean> {
-  const recent = await prisma.message.findFirst({
-    where: {
-      companyId,
-      direction: 'OUTBOUND',
-      deletedAt: null,
-      createdAt: { gte: new Date(Date.now() - DEDUPE_WINDOW_MS) },
-      contact: { phoneNumber: phoneDigits },
-    },
-    select: { id: true },
-  });
-  return Boolean(recent);
-}
-
 /**
  * Núcleo compartilhado das integrações de ENTRADA (RD Station, Kommo, …):
  * escolhe o canal, dispara a 1ª mensagem, marca a conversa como origem CRM
@@ -144,16 +139,59 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
     }));
   if (!channel) return { status: 'failed', detail: 'no-channel' };
 
-  // Anti-duplicidade: se já mandamos a abertura para este número há pouco
-  // (webhook do CRM repetido / add+status / retry), não manda de novo.
-  const phoneDigits = input.phone.replace(/\D/g, '');
-  if (await alreadyContacted(channel.companyId, phoneDigits)) {
-    logger.info(
-      { phone: phoneDigits, companyId: channel.companyId },
-      'dispatchLead: lead já contatado recentemente — 1ª mensagem duplicada evitada',
-    );
-    return { status: 'skipped', detail: 'already-contacted' };
+  // Telefone canônico (13 díg.). Regra da rodada: nunca comparar telefone cru.
+  const normalizedPhone = normalizeBrPhone(input.phone);
+  if (!normalizedPhone) return { status: 'failed', detail: 'invalid-phone' };
+  const waJid = `${normalizedPhone}@s.whatsapp.net`;
+
+  // Idempotência POR ESTADO (sem guard por tempo): garante NO MÁXIMO uma
+  // conversa NÃO-TERMINAL por (companyId, normalizedPhone). A trava real é o
+  // índice único parcial (ensure-indexes.sql). Reservamos a conversa ANTES de
+  // enviar; se a criação colidir (webhook do CRM 2x / add+status / retry), a 1ª
+  // mensagem NÃO é enviada de novo — skip por estado, não por tempo.
+  const contact = await prisma.contact.upsert({
+    where: { companyId_waJid: { companyId: channel.companyId, waJid } },
+    create: {
+      tenantId: channel.tenantId,
+      companyId: channel.companyId,
+      waJid,
+      phoneNumber: normalizedPhone,
+      ...(input.name ? { name: input.name } : {}),
+    },
+    update: {},
+  });
+
+  let reserved: { id: string };
+  try {
+    reserved = await prisma.conversation.create({
+      data: {
+        tenantId: channel.tenantId,
+        companyId: channel.companyId,
+        contactId: contact.id,
+        evolutionInstanceId: channel.id,
+        waRemoteJid: waJid,
+        normalizedPhone,
+        origin: 'CRM',
+        status: 'OPEN',
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      logger.info(
+        { normalizedPhone, companyId: channel.companyId },
+        'dispatchLead: já existe conversa ativa para este número — 1ª mensagem duplicada evitada (idempotência por estado)',
+      );
+      return { status: 'skipped', detail: 'active-conversation-exists' };
+    }
+    logger.error({ err, tenantId: input.tenantId }, 'dispatchLead: falha ao reservar conversa');
+    return { status: 'failed', detail: 'reserve-error' };
   }
+  await recordEvent({
+    tenantId: channel.tenantId,
+    conversationId: reserved.id,
+    type: 'CREATED',
+  });
 
   // Variáveis na abertura: {{nome}}, {{campanha}}, {{formulario}}, {{empresa}}.
   const vars: Record<string, string> = {
@@ -178,10 +216,12 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
         }
       : null;
   try {
+    // Reutiliza a conversa já reservada: sendText normaliza o mesmo waJid e o
+    // resolveContactAndConversation acha a conversa aberta deste contato/canal.
     const sent = await messaging.sendText({
       tenantId: input.tenantId,
       channelId: channel.id,
-      number: input.phone,
+      number: normalizedPhone,
       text,
       authorType: 'AI',
     });
@@ -194,7 +234,12 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
         ...(input.handoffToSdr ? {} : { aiEnabled: false }),
         ...(input.externalCardId ? { metadata: { foreseeCardId: input.externalCardId } } : {}),
         ...(entry || (input.collected && Object.keys(input.collected).length)
-          ? { qualification: { entry, collected: input.collected ?? {} } }
+          ? {
+              qualification: {
+                entry,
+                collected: input.collected ?? {},
+              } as Prisma.InputJsonValue,
+            }
           : {}),
       },
     });
@@ -204,7 +249,18 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
     });
     return { status: 'sent', detail: channel.name };
   } catch (err) {
-    logger.error({ err, tenantId: input.tenantId }, 'dispatchLead: falha ao enviar mensagem');
+    // Falha síncrona no envio: LIBERA a reserva (fecha + soft-delete) para o
+    // índice parcial não travar um retry legítimo deste lead.
+    await prisma.conversation
+      .update({
+        where: { id: reserved.id },
+        data: { status: 'CLOSED', closedAt: new Date(), deletedAt: new Date() },
+      })
+      .catch(() => undefined);
+    logger.error(
+      { err, tenantId: input.tenantId },
+      'dispatchLead: falha ao enviar mensagem — reserva liberada',
+    );
     return { status: 'failed', detail: 'send-error' };
   }
 }

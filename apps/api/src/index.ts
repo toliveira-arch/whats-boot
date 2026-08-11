@@ -6,6 +6,7 @@ import { createSocketServer } from './realtime/socket';
 import { redis } from './lib/redis';
 import { prisma } from './lib/prisma';
 import { closeQueues } from './queues';
+import { ensureIndexes } from './db/ensure-indexes';
 import { resyncAllWebhooks } from './modules/evolution/channels.service';
 import { startWarmupScheduler, stopWarmupScheduler } from './modules/warmup/warmup.engine';
 import { startFollowUpScheduler, stopFollowUpScheduler } from './modules/followup/followup.engine';
@@ -16,6 +17,10 @@ async function bootstrap(): Promise<void> {
 
   // Socket.IO acoplado ao mesmo servidor HTTP
   const io = createSocketServer(httpServer);
+
+  // Invariantes de banco que o Prisma não expressa (índice único parcial de
+  // idempotência da 1ª mensagem). Roda antes de servir tráfego; nunca derruba o boot.
+  await ensureIndexes();
 
   // Provedores de nuvem (Render/Railway) injetam a porta em PORT.
   const port = process.env.PORT ? Number(process.env.PORT) : env.API_PORT;
