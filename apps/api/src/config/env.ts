@@ -68,6 +68,11 @@ const envSchema = z.object({
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+
+  // Secret opcional para liberar o bloco GLOBAL (cross-tenant) da rota de
+  // verificação /api/admin/health/patch-a via header X-Admin-Secret. Sem esta
+  // var definida, o bloco global nunca é retornado.
+  ADMIN_HEALTH_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -4,6 +4,21 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { normalizeBrPhone } from '../modules/integrations/dispatch';
 
+/** Resultado do último ensureIndexes do boot — exposto pela rota de verificação. */
+export interface EnsureIndexesResult {
+  ranAt: string;
+  backfill: { scanned: number; updated: number } | { error: string } | null;
+  statements: Array<{ statement: string; affected?: number; error?: string }>;
+  sqlReadError?: string;
+}
+
+let lastResult: EnsureIndexesResult | null = null;
+
+/** Último resultado do ensureIndexes (null se ainda não rodou). */
+export function getEnsureIndexesResult(): EnsureIndexesResult | null {
+  return lastResult;
+}
+
 /**
  * BACKFILL — preenche Conversation.normalizedPhone das conversas NÃO-TERMINAIS
  * legadas (coluna nova, hoje NULL em prod), derivando do Contact via a MESMA
@@ -18,7 +33,7 @@ import { normalizeBrPhone } from '../modules/integrations/dispatch';
  * No boot não há contexto de tenant (ALS vazio) → o guard multi-tenant é no-op
  * e o findMany varre TODAS as empresas, igual ao runner do índice.
  */
-async function backfillNormalizedPhone(): Promise<void> {
+async function backfillNormalizedPhone(): Promise<{ scanned: number; updated: number }> {
   const pending = await prisma.conversation.findMany({
     where: {
       normalizedPhone: null,
@@ -48,6 +63,7 @@ async function backfillNormalizedPhone(): Promise<void> {
     { scanned: pending.length, updated },
     'ensureIndexes: backfill de normalizedPhone concluído',
   );
+  return { scanned: pending.length, updated };
 }
 
 /**
@@ -60,10 +76,17 @@ async function backfillNormalizedPhone(): Promise<void> {
  * proteção de unicidade fica pendente e o próximo boot tenta de novo).
  */
 export async function ensureIndexes(): Promise<void> {
+  const result: EnsureIndexesResult = {
+    ranAt: new Date().toISOString(),
+    backfill: null,
+    statements: [],
+  };
+
   // PASSO 0 — backfill das conversas legadas (antes do colapso e do índice).
   try {
-    await backfillNormalizedPhone();
+    result.backfill = await backfillNormalizedPhone();
   } catch (err) {
+    result.backfill = { error: err instanceof Error ? err.message : String(err) };
     logger.error({ err }, 'ensureIndexes: falha no backfill de normalizedPhone — seguindo');
   }
 
@@ -75,6 +98,8 @@ export async function ensureIndexes(): Promise<void> {
     const sqlPath = join(dirname(dbEntry), 'prisma', 'ensure-indexes.sql');
     sql = readFileSync(sqlPath, 'utf8');
   } catch (err) {
+    result.sqlReadError = err instanceof Error ? err.message : String(err);
+    lastResult = result;
     logger.error({ err }, 'ensureIndexes: não foi possível ler ensure-indexes.sql — pulando');
     return;
   }
@@ -93,9 +118,16 @@ export async function ensureIndexes(): Promise<void> {
     const head = statement.slice(0, 60).replace(/\s+/g, ' ');
     try {
       const affected = await prisma.$executeRawUnsafe(statement);
+      result.statements.push({ statement: head, affected });
       logger.info({ affected, statement: head }, 'ensureIndexes: statement aplicado');
     } catch (err) {
+      result.statements.push({
+        statement: head,
+        error: err instanceof Error ? err.message : String(err),
+      });
       logger.error({ err, statement: head }, 'ensureIndexes: falha ao aplicar statement');
     }
   }
+
+  lastResult = result;
 }
