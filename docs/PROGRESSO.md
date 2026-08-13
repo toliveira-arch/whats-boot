@@ -212,13 +212,13 @@ Webhook do CRM ─▶ service específico (rd / kommo / webhook)
   inline). Redis permanece para Socket.IO/health. A remoção do `jobId` do inbound
   só entra aqui, e só porque a garantia por estado (`Message.waMessageId @unique`)
   já existe. **Plano antes de codar.**
-- **Follow-up (DEPOIS do Patch B) — normalização de telefone na ENTRADA do
-  inbound:** o `resolveContactAndConversation` casa o reply do lead por `waJid`
-  **exato**, mas o Baileys às vezes dropa o 9º dígito no JID → o reply não casa
-  com a conversa do CRM (13 díg. com 9) e a trava do robô falha. Corrigir com
-  **match por conjunto de variantes-OR** (mesma família de `normalizeBrPhone`)
-  no lookup de contato/conversa. É o mesmo problema de normalização que o Patch A
-  resolveu na ponta de saída — não pode se perder.
+- ~~**Follow-up — normalização de telefone na ENTRADA do inbound**~~ ✅ **FEITO**
+  (antecipado, antes do Patch B): o inbound (`ingest.upsertContact`) agora casa o
+  contato por **variantes-OR** (com/sem o 9, via `phoneVariants`) em vez de `waJid`
+  cru — o reply do lead cai na conversa que o CRM criou e o robô responde. Novos
+  contatos gravam `phoneNumber` já canônico. Grupos intactos. (Endurecimento
+  futuro opcional: coluna `Contact.normalizedPhone` para eliminar o raro
+  falso-merge fixo↔celular-com-9.)
 
 ### Segurança (ação do cliente)
 

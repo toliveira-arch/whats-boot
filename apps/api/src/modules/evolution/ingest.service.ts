@@ -6,6 +6,7 @@ import { generateReplyJob } from '../ai/ai.service';
 import { recordEvent } from '../events/events.service';
 import { transcribeInboundAudio } from '../ai/transcription.service';
 import { sendDisconnectAlert } from './channels.service';
+import { normalizeBrPhone, phoneVariants } from '../integrations/dispatch';
 import {
   extractText,
   mapAckStatus,
@@ -55,16 +56,73 @@ async function loadChannel(channelId: string): Promise<Channel | null> {
 }
 
 async function upsertContact(channel: Channel, remoteJid: string, pushName?: string) {
+  const isGroup = remoteJid.endsWith('@g.us');
+
+  // Grupos / não-telefone: comportamento exato de antes (match por JID cru).
+  if (isGroup) {
+    return prisma.contact.upsert({
+      where: { companyId_waJid: { companyId: channel.companyId, waJid: remoteJid } },
+      create: {
+        tenantId: channel.tenantId,
+        companyId: channel.companyId,
+        waJid: remoteJid,
+        phoneNumber: jidToPhone(remoteJid),
+        pushName: pushName ?? null,
+        name: pushName ?? null,
+        isGroup: true,
+        lastInteractionAt: new Date(),
+      },
+      update: { pushName: pushName ?? undefined, lastInteractionAt: new Date() },
+    });
+  }
+
+  // Telefone: casa por VARIANTES (com/sem o 9) — o Baileys às vezes entrega o
+  // JID sem o 9º dígito, e o reply do lead precisa cair no contato/conversa que
+  // o CRM já criou (senão a trava do robô ignora e ele fica mudo). Nunca compara
+  // telefone cru: normaliza + variantes.
+  const canonical = normalizeBrPhone(jidToPhone(remoteJid));
+  const variants = phoneVariants(jidToPhone(remoteJid));
+  const variantJids = variants.map((v) => `${v}@s.whatsapp.net`);
+
+  const existing = variants.length
+    ? await prisma.contact.findFirst({
+        where: {
+          companyId: channel.companyId,
+          deletedAt: null,
+          isGroup: false,
+          OR: [
+            { waJid: remoteJid },
+            { waJid: { in: variantJids } },
+            { phoneNumber: { in: variants } },
+          ],
+        },
+        orderBy: { lastInteractionAt: 'desc' },
+      })
+    : null;
+
+  if (existing) {
+    return prisma.contact.update({
+      where: { id: existing.id },
+      data: {
+        pushName: pushName ?? undefined,
+        lastInteractionAt: new Date(),
+        // Normaliza o telefone do contato legado (matches futuros estáveis).
+        ...(canonical && existing.phoneNumber !== canonical ? { phoneNumber: canonical } : {}),
+      },
+    });
+  }
+
+  // Novo contato: grava o telefone JÁ canônico (normaliza na escrita).
   return prisma.contact.upsert({
     where: { companyId_waJid: { companyId: channel.companyId, waJid: remoteJid } },
     create: {
       tenantId: channel.tenantId,
       companyId: channel.companyId,
       waJid: remoteJid,
-      phoneNumber: jidToPhone(remoteJid),
+      phoneNumber: canonical ?? jidToPhone(remoteJid),
       pushName: pushName ?? null,
       name: pushName ?? null,
-      isGroup: remoteJid.endsWith('@g.us'),
+      isGroup: false,
       lastInteractionAt: new Date(),
     },
     update: { pushName: pushName ?? undefined, lastInteractionAt: new Date() },

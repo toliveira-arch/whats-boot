@@ -75,6 +75,34 @@ export function normalizeBrPhone(raw: unknown): string | null {
   return d;
 }
 
+/**
+ * Variantes BR de um telefone para LOOKUP por OR (nunca match cru): o WhatsApp/
+ * Baileys às vezes entrega o JID do celular SEM o 9º dígito. Gera as DUAS formas
+ * equivalentes — com o 9 (13 díg) e sem o 9 (12 díg) — de forma BIDIRECIONAL
+ * (independe do heurístico de celular), para casar o reply do lead com o
+ * contato/conversa já criados pelo CRM, venha em qual das duas formas vier.
+ */
+export function phoneVariants(raw: unknown): string[] {
+  let d = String(raw ?? '').replace(/\D/g, '');
+  if (!d) return [];
+  if (d.startsWith('0055')) d = d.slice(2);
+  if (!d.startsWith('55') && (d.length === 10 || d.length === 11)) d = `55${d}`;
+  if (!d.startsWith('55')) return [d];
+  const ddd = d.slice(2, 4);
+  const local = d.slice(4);
+  const set = new Set<string>();
+  if (local.length === 9 && local.startsWith('9')) {
+    set.add(`55${ddd}${local}`); // 13 díg (com o 9)
+    set.add(`55${ddd}${local.slice(1)}`); // 12 díg (sem o 9)
+  } else if (local.length === 8) {
+    set.add(`55${ddd}${local}`); // 12 díg (sem o 9)
+    set.add(`55${ddd}9${local}`); // 13 díg (com o 9)
+  } else {
+    set.add(d);
+  }
+  return [...set];
+}
+
 export interface DispatchInput {
   tenantId: string;
   companyId: string | null;
