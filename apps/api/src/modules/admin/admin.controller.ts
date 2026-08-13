@@ -37,16 +37,28 @@ export async function patchAHealthController(req: Request, res: Response): Promi
   `;
   const indiceExiste = idx.length > 0;
 
-  // (2) Conversas não-terminais ainda sem normalizedPhone (tenant-scoped).
+  // (2) Leads de CRM ativos ainda sem normalizedPhone (tenant-scoped). Filtra
+  //     origin='CRM' porque só o dispatch escreve normalizedPhone — conversas
+  //     orgânicas (INBOUND) não entram na trava e não devem contar aqui.
   const ativasSemNormalized = await prisma.conversation.count({
-    where: { deletedAt: null, status: { not: 'CLOSED' }, normalizedPhone: null },
+    where: {
+      origin: 'CRM',
+      deletedAt: null,
+      status: { not: 'CLOSED' },
+      normalizedPhone: null,
+    },
   });
 
   // (3) Grupos com >1 conversa ativa no mesmo (companyId, normalizedPhone) —
   //     prova que o colapso não colou números diferentes (tenant-scoped).
   const grupos = await prisma.conversation.groupBy({
     by: ['companyId', 'normalizedPhone'],
-    where: { deletedAt: null, status: { not: 'CLOSED' }, normalizedPhone: { not: null } },
+    where: {
+      origin: 'CRM',
+      deletedAt: null,
+      status: { not: 'CLOSED' },
+      normalizedPhone: { not: null },
+    },
     _count: { companyId: true },
     having: { companyId: { _count: { gt: 1 } } },
   });
@@ -69,7 +81,8 @@ export async function patchAHealthController(req: Request, res: Response): Promi
     const semNorm = await prisma.$queryRaw<Array<{ n: number }>>`
       SELECT count(*)::int AS n
       FROM "Conversation"
-      WHERE "deletedAt" IS NULL AND status <> 'CLOSED' AND "normalizedPhone" IS NULL
+      WHERE "deletedAt" IS NULL AND status <> 'CLOSED'
+        AND "origin" = 'CRM' AND "normalizedPhone" IS NULL
     `;
     const n = semNorm[0]?.n ?? 0;
     const gruposGlobal = await prisma.$queryRaw<
@@ -77,7 +90,8 @@ export async function patchAHealthController(req: Request, res: Response): Promi
     >`
       SELECT "companyId", "normalizedPhone", count(*)::int AS ativas
       FROM "Conversation"
-      WHERE "deletedAt" IS NULL AND status <> 'CLOSED' AND "normalizedPhone" IS NOT NULL
+      WHERE "deletedAt" IS NULL AND status <> 'CLOSED'
+        AND "origin" = 'CRM' AND "normalizedPhone" IS NOT NULL
       GROUP BY "companyId", "normalizedPhone"
       HAVING count(*) > 1
     `;

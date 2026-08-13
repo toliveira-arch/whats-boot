@@ -36,6 +36,10 @@ export function getEnsureIndexesResult(): EnsureIndexesResult | null {
 async function backfillNormalizedPhone(): Promise<{ scanned: number; updated: number }> {
   const pending = await prisma.conversation.findMany({
     where: {
+      // SÓ leads de CRM: apenas o dispatch escreve normalizedPhone, então só
+      // conversas origin='CRM' entram na trava. Preencher orgânicas (INBOUND)
+      // faria uma conversa orgânica BLOQUEAR um lead de CRM novo no mesmo número.
+      origin: 'CRM',
       normalizedPhone: null,
       deletedAt: null,
       status: { not: 'CLOSED' },
