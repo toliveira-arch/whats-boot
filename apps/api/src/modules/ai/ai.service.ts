@@ -229,6 +229,26 @@ function parseQualOutput(raw: string): QualLlmOutput {
   }
 }
 
+/**
+ * Detecta se o "reply" da IA ANUNCIA o encaminhamento ao especialista/closer
+ * (fechamento). Usado como rede de segurança quando o texto encaminha mas a IA
+ * esqueceu de marcar verdict=ENCAMINHAR. Conservador (só fechamentos claros).
+ */
+function announcesHandoff(reply: string): boolean {
+  const t = reply
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return (
+    /\bvou (te )?encaminhar\b/.test(t) ||
+    /\bencaminh\w* (suas|seus|as suas|os seus|voce|voces)\b/.test(t) ||
+    /\bencaminh\w* (para|ao|a) (um |o |a )?(especialista|consultor|time|equipe|closer)\b/.test(t) ||
+    /\b(vou|irei) (repassar|passar) (suas|seus)\b/.test(t) ||
+    /\b(especialista|consultor)\b.*\bentrar[a]? em contato\b/.test(t) ||
+    /\bentrar[a]? em contato (com voce )?(em breve|em seguida|logo)\b/.test(t)
+  );
+}
+
 /** Modo guiado por prompt: mapeia o veredito textual da IA para o interno. */
 function mapPromptVerdict(v: string | undefined): { verdict: LeadVerdict; clienteAtivo: boolean } {
   const s = (v ?? '').toUpperCase();
@@ -276,6 +296,7 @@ function buildQualSystemPrompt(p: {
         `DADOS JÁ COLETADOS (não pergunte de novo): ${JSON.stringify(p.prevCollected)}`,
         'Responda SEMPRE em JSON válido, sem nada fora do JSON, no formato exato: {"reply":"mensagem curta ao cliente (uma pergunta por vez, ou o encerramento cordial)","collected":{"...dados coletados; se houver faturamento use a chave \\"faturamento\\" como número inteiro em reais/mês, ex 30000"},"interest":"Baixo|Médio|Alto","urgency":"Baixa|Média|Alta","summary":"resumo curto do lead","verdict":"EM_ANDAMENTO | ENCAMINHAR | DISPENSADO | CLIENTE_ATIVO"}',
         'REGRA DO "verdict": EM_ANDAMENTO enquanto ainda estiver conversando/coletando; ENCAMINHAR quando o lead atender aos critérios do seu roteiro; DISPENSADO quando não atender; CLIENTE_ATIVO se a pessoa já for cliente. Ao definir ENCAMINHAR, DISPENSADO ou CLIENTE_ATIVO, faça o encerramento cordial no "reply" e não faça novas perguntas.',
+        'COERÊNCIA OBRIGATÓRIA entre "reply" e "verdict": se o "reply" anuncia que vai ENCAMINHAR/passar o lead para um especialista (ou que alguém entrará em contato), o "verdict" TEM que ser "ENCAMINHAR" na MESMA resposta — NUNCA "EM_ANDAMENTO". Se o "reply" dispensa/encerra sem encaminhar, o "verdict" TEM que ser "DISPENSADO". Jamais escreva um encerramento de encaminhamento com verdict diferente de ENCAMINHAR.',
       ]
         .filter(Boolean)
         .join('\n\n')
@@ -663,7 +684,14 @@ async function runQualification(input: {
     // o encerramento cordial quando encaminha/dispensa.
     const m = mapPromptVerdict(out.verdict);
     verdict = m.verdict;
-    if (m.verdict === 'QUALIFIED') {
+    // Rede de segurança: às vezes a IA ESCREVE o encaminhamento no "reply" mas
+    // esquece de marcar verdict=ENCAMINHAR (texto e rótulo divergem) → o lead
+    // ficaria preso em "Lead Novo". Se o texto anuncia claramente o handoff,
+    // reconcilia para QUALIFIED (a menos que já seja um veredito terminal).
+    if (verdict === 'IN_PROGRESS' && out.reply && announcesHandoff(out.reply)) {
+      verdict = 'QUALIFIED';
+      reasons = ['Qualificado pela IA (encaminhamento anunciado no texto)'];
+    } else if (m.verdict === 'QUALIFIED') {
       reasons = [m.clienteAtivo ? 'Cliente já ativo (decidido pela IA)' : 'Qualificado pela IA'];
     } else if (m.verdict === 'DISQUALIFIED') {
       reasons = ['Dispensado pela IA'];
