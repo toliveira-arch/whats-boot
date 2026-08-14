@@ -262,6 +262,16 @@ export function Chat() {
             await loadMessages(conversation.id);
             await refreshDetail();
           }}
+          onResetNumber={async () => {
+            const r = await chat.resetNumber(conversation.id);
+            // A conversa foi encerrada/ocultada: fecha e recarrega a lista.
+            setSelectedId(null);
+            setConversation(null);
+            await loadList();
+            window.alert(
+              `Número resetado. ${r.freed} conversa(s) liberada(s). Gere um novo lead para atender como novo.`,
+            );
+          }}
         />
       )}
     </div>

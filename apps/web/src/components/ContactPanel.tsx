@@ -91,6 +91,7 @@ interface Props {
   onSetAiMode: (mode: AiMode) => void;
   onToggleAiEnabled: (enabled: boolean | null) => void;
   onResetMemory: () => void;
+  onResetNumber: () => void;
 }
 
 export function ContactPanel({
@@ -104,6 +105,7 @@ export function ContactPanel({
   onSetAiMode,
   onToggleAiEnabled,
   onResetMemory,
+  onResetNumber,
 }: Props) {
   const [newTag, setNewTag] = useState('');
   const [noteBody, setNoteBody] = useState('');
@@ -208,6 +210,21 @@ export function ContactPanel({
           }}
         >
           🧹 Limpar memória (teste)
+        </button>
+        <button
+          type="button"
+          className="btn ghost sm"
+          style={{ marginTop: 8 }}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Resetar o número ${c.phoneNumber ?? ''}? Encerra e oculta TODAS as conversas ativas deste número, liberando-o para ser atendido como lead novo no próximo disparo (teste ou real). Os dados ficam no banco (auditoria), mas somem da operação.`,
+              )
+            )
+              onResetNumber();
+          }}
+        >
+          ♻️ Resetar número (teste)
         </button>
       </div>
 

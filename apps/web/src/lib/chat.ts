@@ -137,6 +137,14 @@ export function resetConversation(id: string): Promise<{ ok: boolean }> {
   return authFetch(`/conversations/${id}/reset`, { method: 'POST' });
 }
 
+/**
+ * Reseta o NÚMERO (teste): encerra/oculta todas as conversas ativas deste número
+ * (variantes com/sem o 9), liberando-o para ser atendido como lead novo.
+ */
+export function resetNumber(id: string): Promise<{ ok: boolean; freed: number }> {
+  return authFetch(`/conversations/${id}/reset-number`, { method: 'POST' });
+}
+
 export function updateConversation(
   id: string,
   patch: {

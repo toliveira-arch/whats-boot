@@ -3,6 +3,7 @@ import { HttpError } from '../../middlewares/error';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
 import { recordEvent, listConversationEvents } from '../events/events.service';
+import { normalizeBrPhone, phoneVariants } from '../integrations/dispatch';
 
 function currentTenantId(): string {
   const tenantId = getTenantContext()?.tenantId;
@@ -307,6 +308,62 @@ export async function resetConversation(conversationId: string) {
     qualification: null,
   });
   return { ok: true };
+}
+
+/**
+ * RESET DE NÚMERO (teste): libera completamente um número para ser atendido como
+ * lead novo. A partir da conversa informada, deriva o telefone, encontra TODAS
+ * as conversas ativas do mesmo número (por variantes com/sem o 9) e faz
+ * soft-delete (deletedAt + status CLOSED) nelas e nas suas mensagens.
+ *
+ * Assim o número sai da trava de idempotência (dispatchLead) e do reaproveitamento
+ * de conversa (sendText), e o PRÓXIMO lead (teste ou real do RD) cria uma conversa
+ * NOVA em "Lead Novo" e dispara a abertura. Soft-delete: o dado permanece no banco
+ * para auditoria, apenas some da operação (nada é apagado de forma irreversível).
+ */
+export async function resetNumber(conversationId: string) {
+  const conv = await requireConversation(conversationId);
+  const tenantId = currentTenantId();
+
+  const raw = conv.contact?.waJid?.split('@')[0] ?? conv.contact?.phoneNumber ?? null;
+  const variants = phoneVariants(normalizeBrPhone(raw) ?? raw);
+  const variantJids = variants.map((v) => `${v}@s.whatsapp.net`);
+
+  // Contatos da empresa que casam com o número (por variantes) — inclui o atual.
+  const contacts = variants.length
+    ? await prisma.contact.findMany({
+        where: {
+          companyId: conv.companyId,
+          OR: [{ waJid: { in: variantJids } }, { phoneNumber: { in: variants } }],
+        },
+        select: { id: true },
+      })
+    : [];
+  const contactIds = Array.from(new Set([conv.contactId, ...contacts.map((c) => c.id)]));
+
+  // Conversas ativas desses contatos → soft-delete (some da operação, libera o número).
+  const convs = await prisma.conversation.findMany({
+    where: { companyId: conv.companyId, contactId: { in: contactIds }, deletedAt: null },
+    select: { id: true },
+  });
+  const convIds = convs.map((c) => c.id);
+  const now = new Date();
+  if (convIds.length) {
+    await prisma.message.updateMany({
+      where: { conversationId: { in: convIds }, deletedAt: null },
+      data: { deletedAt: now },
+    });
+    await prisma.conversation.updateMany({
+      where: { id: { in: convIds } },
+      data: { deletedAt: now, status: 'CLOSED', aiEnabled: false },
+    });
+  }
+
+  broadcastToTenant(tenantId, 'crm.updated', { conversationId, stage: null });
+  for (const id of convIds) {
+    broadcastToTenant(tenantId, 'conversation.updated', { conversationId: id });
+  }
+  return { ok: true, freed: convIds.length };
 }
 
 // ---------------------------------------------------------------------------

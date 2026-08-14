@@ -46,6 +46,10 @@ export const resetConversationController = asyncHandler(async (req, res) => {
   res.json(await svc.resetConversation(req.params.id!));
 });
 
+export const resetNumberController = asyncHandler(async (req, res) => {
+  res.json(await svc.resetNumber(req.params.id!));
+});
+
 export const updateConversationController = asyncHandler(async (req, res) => {
   res.json(await svc.updateConversation(req.params.id!, req.body));
 });
