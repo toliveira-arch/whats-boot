@@ -1108,6 +1108,7 @@ export async function testGenerate(input: {
         model: agent.model,
         temperature: agent.temperature,
         maxTokens: agent.maxTokens,
+        json: true,
         messages: [
           { role: 'system', content: sys },
           { role: 'user', content: input.userMessage },
