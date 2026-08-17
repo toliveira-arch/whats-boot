@@ -821,6 +821,37 @@ async function runQualification(input: {
   return { mode: 'COPILOT', content: outboundText, verdict };
 }
 
+const CLOSER_FIELD_LABELS: Record<string, string> = {
+  cnpj: 'CNPJ',
+  motivo_busca: 'Motivo',
+  motivo: 'Motivo',
+  necessidade: 'Necessidade',
+  faturamento: 'Faturamento',
+  regime: 'Regime tributário',
+  ramo: 'Ramo',
+  segmento: 'Segmento',
+  decisor: 'Decisor',
+  dor: 'Dor/Objetivo',
+  funcionarios: 'Funcionários',
+  email: 'E-mail',
+};
+
+/** Formata TODOS os dados coletados na conversa para a mensagem do closer. */
+function formatCollectedForCloser(collected: Record<string, unknown>): string {
+  const lines = Object.entries(collected)
+    .filter(([k, v]) => k !== 'nome' && v !== undefined && v !== null && String(v).trim() !== '')
+    .map(([k, v]) => {
+      const label =
+        CLOSER_FIELD_LABELS[k] ?? k.replace(/_/g, ' ').replace(/^\w/, (ch) => ch.toUpperCase());
+      const value =
+        k === 'faturamento' && typeof v === 'number'
+          ? `R$ ${v.toLocaleString('pt-BR')}/mês`
+          : String(v);
+      return `• ${label}: ${value}`;
+    });
+  return lines.length ? lines.join('\n') : '—';
+}
+
 /** Dispara a notificação do lead qualificado para o closer da empresa. */
 async function notifyCloser(input: {
   tid: string;
@@ -867,14 +898,21 @@ async function notifyCloser(input: {
       ''
     ).replace(/\D/g, '');
     const val = (v: unknown) => (v === undefined || v === null || v === '' ? '—' : String(v));
+    // Lista TODOS os dados coletados na conversa, com rótulos legíveis — assim o
+    // closer recebe o contexto real (CNPJ, motivo, necessidade…), independente do
+    // nicho. Rótulos conhecidos ganham nome bonito; os demais usam a própria chave.
+    const dados = formatCollectedForCloser(collected);
     const template = config.closerTemplate?.trim() || DEFAULT_CLOSER_TEMPLATE;
     const text = renderTemplate(template, {
       nome: val(collected.nome ?? conversation.contact.name ?? conversation.contact.pushName),
       telefone: leadPhone || '—',
       empresa: val(company?.name),
+      dados,
       faturamento: val(collected.faturamento),
       ramo: val(collected.ramo ?? collected.segmento),
       cnpj: val(collected.cnpj),
+      motivo: val(collected.motivo_busca ?? collected.motivo),
+      necessidade: val(collected.necessidade),
       decisor: val(collected.decisor),
       dor: val(collected.dor),
       resumo: val(out.summary ?? qualState.summary),
