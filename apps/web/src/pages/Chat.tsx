@@ -210,6 +210,12 @@ export function Chat() {
         onArchivedChange={setArchived}
         crmOnly={crmOnly}
         onCrmOnlyChange={setCrmOnly}
+        onCleanupOrganic={async () => {
+          const r = await chat.cleanupOrganic();
+          setCrmOnly(true);
+          await loadList();
+          window.alert(`Limpeza concluída. ${r.removed} conversa(s) orgânica(s) removida(s).`);
+        }}
         loading={loadingList}
         channels={channels}
         channelId={channelId}

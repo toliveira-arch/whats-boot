@@ -370,6 +370,22 @@ export async function resetNumber(conversationId: string) {
   return { ok: true, freed: convIds.length };
 }
 
+/**
+ * LIMPEZA (admin): oculta (soft-delete) TODAS as conversas que NÃO vieram do CRM
+ * — contatos orgânicos que o robô nunca atendeu. Some do Chat/CRM, mas os dados
+ * permanecem no banco (deletedAt) para auditoria — reversível. Tenant-scoped
+ * pelo guard (só afeta a conta do admin logado).
+ */
+export async function cleanupOrganic(): Promise<{ removed: number }> {
+  const now = new Date();
+  const res = await prisma.conversation.updateMany({
+    where: { deletedAt: null, origin: { not: 'CRM' } },
+    data: { deletedAt: now, isArchived: true },
+  });
+  broadcastToTenant(currentTenantId(), 'conversation.updated', { conversationId: 'bulk' });
+  return { removed: res.count };
+}
+
 // ---------------------------------------------------------------------------
 // Etiquetas (tags)
 // ---------------------------------------------------------------------------

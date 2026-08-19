@@ -33,6 +33,7 @@ interface Props {
   onArchivedChange: (v: boolean) => void;
   crmOnly: boolean;
   onCrmOnlyChange: (v: boolean) => void;
+  onCleanupOrganic: () => void;
   loading: boolean;
   channels: ChannelOption[];
   channelId: string;
@@ -49,6 +50,7 @@ export function ConversationList({
   onArchivedChange,
   crmOnly,
   onCrmOnlyChange,
+  onCleanupOrganic,
   loading,
   channels,
   channelId,
@@ -91,6 +93,23 @@ export function ConversationList({
           Todos os contatos
         </button>
       </div>
+      {!crmOnly && (
+        <button
+          type="button"
+          className="btn ghost sm"
+          style={{ margin: '4px 8px' }}
+          onClick={() => {
+            if (
+              window.confirm(
+                'Limpar contatos orgânicos? Remove da plataforma TODAS as conversas que não vieram do CRM (contatos que o robô não atendeu), deixando só os leads do CRM. Os dados ficam no banco (auditoria), mas somem das listas. Continuar?',
+              )
+            )
+              onCleanupOrganic();
+          }}
+        >
+          🧹 Limpar contatos orgânicos (não-CRM)
+        </button>
+      )}
 
       <div className="conv-items">
         {loading && <p className="sub conv-empty">Carregando…</p>}

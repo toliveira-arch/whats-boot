@@ -100,6 +100,11 @@ export interface ListFilters {
   crmOnly?: boolean;
 }
 
+/** Admin: remove (soft-delete) conversas de contatos orgânicos (não-CRM). */
+export function cleanupOrganic(): Promise<{ removed: number }> {
+  return authFetch('/admin/cleanup/organic', { method: 'POST' });
+}
+
 export function listConversations(f: ListFilters = {}): Promise<ConversationListItem[]> {
   const qs = new URLSearchParams();
   if (f.q) qs.set('q', f.q);

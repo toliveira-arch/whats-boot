@@ -3,6 +3,12 @@ import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { getEnsureIndexesResult } from '../../db/ensure-indexes';
+import { cleanupOrganic } from '../conversations/conversations.service';
+
+/** POST /api/admin/cleanup/organic — remove (soft-delete) conversas não-CRM. */
+export async function cleanupOrganicController(_req: Request, res: Response): Promise<void> {
+  res.json(await cleanupOrganic());
+}
 
 /** Compara dois segredos em tempo constante (evita timing attack). */
 function secretMatches(provided: string | undefined, expected: string): boolean {
