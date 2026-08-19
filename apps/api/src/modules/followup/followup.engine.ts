@@ -52,6 +52,11 @@ export async function tickFollowUps(now = new Date()): Promise<void> {
           companyId: seq.companyId,
           deletedAt: null,
           isArchived: false,
+          // SÓ leads de campanha (RD/CRM) — nunca contatos orgânicos de outros canais.
+          origin: 'CRM',
+          // Respeita o desligamento do robô: por conversa e pelo toggle do canal.
+          aiEnabled: { not: false },
+          evolutionInstance: { aiEnabled: true },
           status: { in: ['OPEN', 'PENDING'] },
           OR: [
             { lastInboundAt: { lte: threshold } },

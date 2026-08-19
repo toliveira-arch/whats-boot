@@ -167,6 +167,11 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
     }));
   if (!channel) return { status: 'failed', detail: 'no-channel' };
 
+  // Robô do canal desligado ("Robô de IA" em Canais) → não dispara nada.
+  // Assim "desligar o robô" fica COMPLETO: sem resposta, sem follow-up e sem
+  // abertura de lead novo por este canal.
+  if (!channel.aiEnabled) return { status: 'skipped', detail: 'channel-ai-off' };
+
   // Telefone canônico (13 díg.). Regra da rodada: nunca comparar telefone cru.
   const normalizedPhone = normalizeBrPhone(input.phone);
   if (!normalizedPhone) return { status: 'failed', detail: 'invalid-phone' };
