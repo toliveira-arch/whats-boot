@@ -19,6 +19,7 @@ export function Chat() {
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState('');
   const [archived, setArchived] = useState(false);
+  const [crmOnly, setCrmOnly] = useState(true);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelId, setChannelId] = useState('');
 
@@ -55,6 +56,7 @@ export function Chat() {
           q: search || undefined,
           archived,
           channelId: channelId || undefined,
+          crmOnly,
         }),
       );
     } catch {
@@ -62,7 +64,7 @@ export function Chat() {
     } finally {
       setLoadingList(false);
     }
-  }, [search, archived, channelId]);
+  }, [search, archived, channelId, crmOnly]);
 
   // Lista + busca (com debounce)
   useEffect(() => {
@@ -206,6 +208,8 @@ export function Chat() {
         onSearch={setSearch}
         archived={archived}
         onArchivedChange={setArchived}
+        crmOnly={crmOnly}
+        onCrmOnlyChange={setCrmOnly}
         loading={loadingList}
         channels={channels}
         channelId={channelId}

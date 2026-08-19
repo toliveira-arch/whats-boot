@@ -32,6 +32,8 @@ export interface ListConversationsParams {
   tagId?: string;
   channelId?: string;
   limit?: number;
+  /** Padrão true: mostra só conversas de leads do CRM (origin='CRM'). */
+  crmOnly?: boolean;
 }
 
 export async function listConversations(params: ListConversationsParams) {
@@ -41,6 +43,8 @@ export async function listConversations(params: ListConversationsParams) {
     where: {
       deletedAt: null,
       isArchived: params.archived ?? false,
+      // Por padrão só leads do CRM (robô) — evita poluir com contatos orgânicos.
+      ...(params.crmOnly === false ? {} : { origin: 'CRM' }),
       ...(params.status ? { status: params.status as never } : {}),
       ...(params.pinned !== undefined ? { isPinned: params.pinned } : {}),
       ...(params.tagId ? { tags: { some: { tagId: params.tagId } } } : {}),

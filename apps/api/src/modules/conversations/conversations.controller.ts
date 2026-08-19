@@ -2,7 +2,7 @@ import { asyncHandler } from '../../lib/http';
 import * as svc from './conversations.service';
 
 export const listConversationsController = asyncHandler(async (req, res) => {
-  const { q, status, archived, pinned, tagId, channelId, limit } = req.query;
+  const { q, status, archived, pinned, tagId, channelId, limit, crmOnly } = req.query;
   res.json(
     await svc.listConversations({
       q: typeof q === 'string' ? q : undefined,
@@ -12,6 +12,8 @@ export const listConversationsController = asyncHandler(async (req, res) => {
       tagId: typeof tagId === 'string' ? tagId : undefined,
       channelId: typeof channelId === 'string' ? channelId : undefined,
       limit: typeof limit === 'string' ? Number(limit) : undefined,
+      // Padrão: só CRM. Só mostra todos quando explicitamente crmOnly=false.
+      crmOnly: crmOnly === 'false' ? false : true,
     }),
   );
 });

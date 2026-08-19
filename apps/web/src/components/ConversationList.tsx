@@ -31,6 +31,8 @@ interface Props {
   onSearch: (v: string) => void;
   archived: boolean;
   onArchivedChange: (v: boolean) => void;
+  crmOnly: boolean;
+  onCrmOnlyChange: (v: boolean) => void;
   loading: boolean;
   channels: ChannelOption[];
   channelId: string;
@@ -45,6 +47,8 @@ export function ConversationList({
   onSearch,
   archived,
   onArchivedChange,
+  crmOnly,
+  onCrmOnlyChange,
   loading,
   channels,
   channelId,
@@ -77,6 +81,14 @@ export function ConversationList({
         </button>
         <button className={archived ? 'active' : ''} onClick={() => onArchivedChange(true)}>
           Arquivadas
+        </button>
+      </div>
+      <div className="conv-tabs">
+        <button className={crmOnly ? 'active' : ''} onClick={() => onCrmOnlyChange(true)}>
+          Clientes do CRM
+        </button>
+        <button className={!crmOnly ? 'active' : ''} onClick={() => onCrmOnlyChange(false)}>
+          Todos os contatos
         </button>
       </div>
 

@@ -96,6 +96,8 @@ export async function listLeads(params: { companyId?: string | null; q?: string;
   const rows = await prisma.conversation.findMany({
     where: {
       deletedAt: null,
+      // CRM só mostra leads que entraram pelo CRM/RD — nunca contatos orgânicos.
+      origin: 'CRM',
       ...(params.companyId ? { companyId: params.companyId } : {}),
       ...(params.q
         ? {

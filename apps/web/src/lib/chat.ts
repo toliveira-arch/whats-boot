@@ -97,6 +97,7 @@ export interface ListFilters {
   archived?: boolean;
   tagId?: string;
   channelId?: string;
+  crmOnly?: boolean;
 }
 
 export function listConversations(f: ListFilters = {}): Promise<ConversationListItem[]> {
@@ -105,6 +106,7 @@ export function listConversations(f: ListFilters = {}): Promise<ConversationList
   if (f.archived !== undefined) qs.set('archived', String(f.archived));
   if (f.tagId) qs.set('tagId', f.tagId);
   if (f.channelId) qs.set('channelId', f.channelId);
+  if (f.crmOnly !== undefined) qs.set('crmOnly', String(f.crmOnly));
   const s = qs.toString();
   return authFetch(`/conversations${s ? `?${s}` : ''}`);
 }
