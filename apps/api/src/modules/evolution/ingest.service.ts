@@ -6,6 +6,7 @@ import { generateReplyJob } from '../ai/ai.service';
 import { recordEvent } from '../events/events.service';
 import { transcribeInboundAudio } from '../ai/transcription.service';
 import { sendDisconnectAlert } from './channels.service';
+import { pauseAiForHumanHandoff } from './messaging.service';
 import { normalizeBrPhone, phoneVariants } from '../integrations/dispatch';
 import {
   extractText,
@@ -196,6 +197,34 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
   }
 
   const now = new Date();
+
+  // fromMe pode ser: (a) ECO de um envio NOSSO (robô/atendente) cujo waMessageId
+  // ainda não sincronizou, ou (b) alguém digitando no CELULAR do número conectado
+  // (intervenção humana). Distinguimos pelo conteúdo/recência.
+  if (fromMe) {
+    const ours = await prisma.message.findFirst({
+      where: {
+        conversationId: conversation.id,
+        direction: 'OUTBOUND',
+        waMessageId: null,
+        deletedAt: null,
+        createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) },
+        ...(content ? { content } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (ours) {
+      // É o nosso próprio envio ecoando — só sincroniza o waMessageId e sai
+      // (não duplica a mensagem e NÃO pausa o robô).
+      await prisma.message
+        .update({ where: { id: ours.id }, data: { waMessageId } })
+        .catch(() => undefined);
+      return;
+    }
+    // Intervenção humana pelo celular → pausa a IA só nesta conversa.
+    await pauseAiForHumanHandoff(conversation.id, channel.tenantId);
+  }
+
   await prisma.message.create({
     data: {
       tenantId: channel.tenantId,

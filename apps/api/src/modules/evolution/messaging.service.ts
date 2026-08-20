@@ -100,6 +100,30 @@ async function resolveContactAndConversation(
   return { contact, conversation };
 }
 
+/**
+ * Pausa a IA em UMA conversa quando um humano intervém (atendente pela plataforma
+ * ou alguém digitando no celular do número conectado) — evita duas pessoas
+ * falando com o lead ao mesmo tempo. Idempotente: só a 1ª intervenção registra o
+ * handoff. A IA pode ser religada por conversa no painel do Chat.
+ */
+export async function pauseAiForHumanHandoff(
+  conversationId: string,
+  tenantId: string,
+): Promise<void> {
+  const res = await prisma.conversation.updateMany({
+    where: { id: conversationId, aiEnabled: { not: false } },
+    data: { aiEnabled: false },
+  });
+  if (res.count === 0) return; // já estava pausada
+  await recordEvent({
+    tenantId,
+    conversationId,
+    type: 'HANDOFF',
+    data: { reason: 'human-intervention' },
+  }).catch(() => undefined);
+  broadcastToTenant(tenantId, 'conversation.updated', { conversationId });
+}
+
 export interface SendTextInput {
   tenantId: string;
   membershipId?: string;
@@ -134,6 +158,11 @@ export async function sendText(input: SendTextInput) {
     where: { id: conversation.id },
     data: { lastMessageAt: new Date(), lastOutboundAt: new Date() },
   });
+
+  // Intervenção humana pela plataforma (atendente): pausa a IA nesta conversa.
+  if ((input.authorType ?? 'AGENT') === 'AGENT') {
+    await pauseAiForHumanHandoff(conversation.id, channel.tenantId);
+  }
 
   await enqueueOrRun(
     QUEUE_NAMES.outboundMessages,
@@ -198,6 +227,11 @@ export async function sendMedia(input: SendMediaInput) {
     where: { id: conversation.id },
     data: { lastMessageAt: new Date(), lastOutboundAt: new Date() },
   });
+
+  // Intervenção humana pela plataforma (atendente): pausa a IA nesta conversa.
+  if ((input.authorType ?? 'AGENT') === 'AGENT') {
+    await pauseAiForHumanHandoff(conversation.id, channel.tenantId);
+  }
 
   await enqueueOrRun(
     QUEUE_NAMES.outboundMessages,
