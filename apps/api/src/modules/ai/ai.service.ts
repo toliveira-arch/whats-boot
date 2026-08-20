@@ -196,6 +196,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Re-checa, IMEDIATAMENTE antes de enviar, se a IA ainda está habilitada nesta
+ * conversa. Um humano pode ter assumido (atendente ou pelo celular) DURANTE a
+ * geração da resposta (LLM + delay), depois do gate inicial — então sem esta
+ * checagem a resposta sairia "por cima" do humano.
+ */
+async function aiStillEnabled(conversationId: string): Promise<boolean> {
+  const c = await prisma.conversation.findFirst({
+    where: { id: conversationId, deletedAt: null },
+    select: { aiEnabled: true, evolutionInstance: { select: { aiEnabled: true } } },
+  });
+  if (!c) return false;
+  if (c.aiEnabled === false) return false;
+  if (!c.evolutionInstance.aiEnabled) return false;
+  return true;
+}
+
 export interface GenerateResult {
   skipped?: string;
   mode?: string;
@@ -487,6 +504,7 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   }
 
   if (effectiveMode === 'AUTOPILOT') {
+    if (!(await aiStillEnabled(conversationId))) return { skipped: 'paused-during-generation' };
     const number = conversation.contact.waJid ?? conversation.contact.phoneNumber ?? '';
     await messaging.sendText({
       tenantId: tid,
@@ -806,6 +824,8 @@ async function runQualification(input: {
   if (max > 0) await sleep((min + Math.floor((max - min) * 0.5)) * 1000);
 
   if (effectiveMode === 'AUTOPILOT') {
+    if (!(await aiStillEnabled(conversationId)))
+      return { skipped: 'paused-during-generation', verdict };
     const number = conversation.contact.waJid ?? conversation.contact.phoneNumber ?? '';
     await messaging.sendText({
       tenantId: tid,

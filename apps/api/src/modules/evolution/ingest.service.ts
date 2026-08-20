@@ -222,6 +222,10 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
       return;
     }
     // Intervenção humana pelo celular → pausa a IA só nesta conversa.
+    logger.info(
+      { conversationId: conversation.id, waMessageId },
+      'ingest: intervenção humana pelo celular — pausando a IA nesta conversa',
+    );
     await pauseAiForHumanHandoff(conversation.id, channel.tenantId);
   }
 
