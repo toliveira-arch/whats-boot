@@ -242,8 +242,30 @@ function parseQualOutput(raw: string): QualLlmOutput {
       verdict: typeof obj.verdict === 'string' ? obj.verdict : undefined,
     };
   } catch {
-    return { reply: raw.trim(), campaignId: null, collected: {} };
+    // NUNCA devolve o texto cru (pode conter campos internos: verdict/collected).
+    // Tenta salvar só o campo "reply" de um JSON malformado; senão, vazio.
+    const m = raw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const reply = m?.[1] ? m[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').trim() : '';
+    return { reply, campaignId: null, collected: {} };
   }
+}
+
+/**
+ * Blindagem anti-vazamento: detecta se um texto que iria para o CLIENTE contém
+ * dados/rotulos internos (verdict, collected, JSON, bloco de código). Palavras
+ * assim não aparecem numa mensagem normal ao cliente.
+ */
+function looksLikeInternalLeak(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    t.includes('"reply"') ||
+    t.includes('```') ||
+    t.includes('verdict') ||
+    t.includes('collected') ||
+    t.includes('motivo_busca') ||
+    t.includes('em_andamento') ||
+    t.includes('cliente_ativo')
+  );
 }
 
 /**
@@ -314,6 +336,7 @@ function buildQualSystemPrompt(p: {
         'Responda SEMPRE em JSON válido, sem nada fora do JSON, no formato exato: {"reply":"mensagem curta ao cliente (uma pergunta por vez, ou o encerramento cordial)","collected":{"...dados coletados; se houver faturamento use a chave \\"faturamento\\" como número inteiro em reais/mês, ex 30000"},"interest":"Baixo|Médio|Alto","urgency":"Baixa|Média|Alta","summary":"resumo curto do lead","verdict":"EM_ANDAMENTO | ENCAMINHAR | DISPENSADO | CLIENTE_ATIVO"}',
         'REGRA DO "verdict": EM_ANDAMENTO enquanto ainda estiver conversando/coletando; ENCAMINHAR quando o lead atender aos critérios do seu roteiro; DISPENSADO quando não atender; CLIENTE_ATIVO se a pessoa já for cliente. Ao definir ENCAMINHAR, DISPENSADO ou CLIENTE_ATIVO, faça o encerramento cordial no "reply" e não faça novas perguntas.',
         'COERÊNCIA OBRIGATÓRIA entre "reply" e "verdict": se o "reply" anuncia que vai ENCAMINHAR/passar o lead para um especialista (ou que alguém entrará em contato), o "verdict" TEM que ser "ENCAMINHAR" na MESMA resposta — NUNCA "EM_ANDAMENTO". Se o "reply" dispensa/encerra sem encaminhar, o "verdict" TEM que ser "DISPENSADO". Jamais escreva um encerramento de encaminhamento com verdict diferente de ENCAMINHAR.',
+        'O campo "reply" é SOMENTE a mensagem enviada ao cliente. JAMAIS inclua nele "verdict", "collected", resumo de dados, JSON, marcadores/rótulos internos ou explicação do seu raciocínio — esses vão nos campos próprios do JSON, nunca no texto ao cliente.',
       ]
         .filter(Boolean)
         .join('\n\n')
@@ -343,6 +366,7 @@ function buildQualSystemPrompt(p: {
           ? `AINDA FALTA COLETAR: ${p.missingLabels.join(', ')}. Nesta resposta, depois de validar o que o cliente disse, faça JÁ a próxima pergunta pendente${p.nextFieldQuestion ? `: "${p.nextFieldQuestion}"` : ''}.`
           : 'Todos os itens obrigatórios já foram coletados — faça o fechamento/encaminhamento, sem novas perguntas.',
         'Responda SEMPRE em JSON válido, sem nada fora do JSON, no formato exato: {"reply":"mensagem curta ao cliente que VALIDA a resposta anterior e JÁ faz a próxima pergunta (só UMA pergunta)","campaignId":"id da campanha ou null","collected":{"...todos os dados conhecidos, incluindo os novos desta resposta; faturamento como número mensal em reais, ex 50000..."},"interest":"Baixo|Médio|Alto","urgency":"Baixa|Média|Alta","summary":"resumo curto do lead"}',
+        'O campo "reply" é SOMENTE a mensagem enviada ao cliente. JAMAIS inclua nele "collected", "summary", JSON, marcadores/rótulos internos ou explicação do raciocínio — esses vão nos campos próprios do JSON, nunca no texto ao cliente.',
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -732,6 +756,26 @@ async function runQualification(input: {
           ? campaign?.handoffMessage || config.defaultHandoffMessage
           : campaign?.disqualifyMessage || config.defaultDisqualifyMessage;
     }
+  }
+
+  // BLINDAGEM: nunca enviar dados internos ao cliente. Se o "reply" veio com
+  // campos internos (verdict/collected/JSON), troca por uma mensagem segura
+  // conforme o veredito (ou vazio, que pula o envio).
+  if (outboundText && looksLikeInternalLeak(outboundText)) {
+    logger.warn(
+      { conversationId, leaked: outboundText.slice(0, 200) },
+      'qualificação: reply continha dados internos — substituído por mensagem segura',
+    );
+    outboundText =
+      verdict === 'QUALIFIED'
+        ? campaign?.handoffMessage ||
+          config.defaultHandoffMessage ||
+          'Perfeito! Vou encaminhar suas informações para um especialista, que entra em contato em breve.'
+        : verdict === 'DISQUALIFIED'
+          ? campaign?.disqualifyMessage ||
+            config.defaultDisqualifyMessage ||
+            'Obrigado pelo contato! Fico à disposição.'
+          : '';
   }
 
   // Diagnóstico do gate (aparece no log da nuvem): por que qualificou/não.
