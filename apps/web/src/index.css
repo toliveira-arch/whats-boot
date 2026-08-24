@@ -552,6 +552,29 @@ h2 {
   background: var(--out);
   border-color: transparent;
 }
+/* Selo interno de autoria (robô x humano x sistema) — só visualização nossa. */
+.author-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 5px;
+  padding: 2px 6px;
+  margin-bottom: 4px;
+  letter-spacing: 0.2px;
+}
+.author-badge.ai {
+  background: rgba(37, 211, 102, 0.18);
+  color: #128c4b;
+}
+.author-badge.agent {
+  background: rgba(59, 130, 246, 0.18);
+  color: #1d4ed8;
+}
+.author-badge.system {
+  background: rgba(148, 163, 184, 0.22);
+  color: #475569;
+}
 .bubble-text {
   font-size: 14px;
   line-height: 1.4;

@@ -17,12 +17,30 @@ function statusTick(status: string): { text: string; className: string } {
   }
 }
 
+// Selo interno de autoria (só na nossa visualização): distingue o que saiu do
+// robô do que foi digitado por um humano no número conectado. Não altera o que
+// é enviado ao WhatsApp.
+function authorBadge(authorType: string): { label: string; cls: string } | null {
+  switch (authorType) {
+    case 'AI':
+      return { label: '🤖 Robô', cls: 'ai' };
+    case 'AGENT':
+      return { label: '👤 Atendente', cls: 'agent' };
+    case 'SYSTEM':
+      return { label: '⚙️ Sistema', cls: 'system' };
+    default:
+      return null;
+  }
+}
+
 function MessageBubble({ m }: { m: ChatMessage }) {
   const out = m.direction === 'OUTBOUND';
   const tick = statusTick(m.status);
+  const badge = out ? authorBadge(m.authorType) : null;
   return (
     <div className={`bubble-row ${out ? 'out' : 'in'}`}>
       <div className="bubble">
+        {badge && <div className={`author-badge ${badge.cls}`}>{badge.label}</div>}
         {m.mediaUrl && m.type === 'IMAGE' && (
           <img className="bubble-media" src={m.mediaUrl} alt={m.mediaName ?? 'imagem'} />
         )}
