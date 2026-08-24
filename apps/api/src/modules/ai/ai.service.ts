@@ -1,6 +1,7 @@
 import { prisma, getTenantContext, runWithTenant, Prisma } from '@whats-boot/database';
 import { HttpError } from '../../middlewares/error';
 import { logger } from '../../lib/logger';
+import { withKeyedLock } from '../../lib/mutex';
 import { encryptSecret, decryptSecret } from '../../lib/crypto';
 import { broadcastToTenant } from '../../realtime/emitter';
 import * as messaging from '../evolution/messaging.service';
@@ -580,6 +581,7 @@ async function runQualification(input: {
     (conversation.qualification as {
       collected?: Record<string, unknown>;
       campaignId?: string | null;
+      closerNotifiedAt?: string | null;
       entry?: {
         campaign?: string | null;
         form?: string | null;
@@ -853,8 +855,31 @@ async function runQualification(input: {
 
   // Notifica o closer da empresa quando o lead é qualificado (MQL).
   // Padrão LIGADO: só não notifica se o toggle foi explicitamente desligado.
-  if (verdict === 'QUALIFIED' && config.notifyCloser !== false) {
-    await notifyCloser({ tid, conversation, config, collected: mergedCollected, out, qualState });
+  // IDEMPOTÊNCIA: dispara UMA única vez por lead. Guarda o instante do envio em
+  // qualification.closerNotifiedAt — assim mensagens seguintes não re-notificam
+  // (fim do spam), mas se o 1º envio FALHAR (retorna false) ele tenta de novo
+  // na próxima mensagem em vez de nunca mais avisar.
+  const alreadyNotifiedCloser = Boolean(prev.closerNotifiedAt);
+  if (verdict === 'QUALIFIED' && !alreadyNotifiedCloser && config.notifyCloser !== false) {
+    const sent = await notifyCloser({
+      tid,
+      conversation,
+      config,
+      collected: mergedCollected,
+      out,
+      qualState,
+    });
+    if (sent) {
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          qualification: {
+            ...qualState,
+            closerNotifiedAt: new Date().toISOString(),
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
   }
   // SAÍDA Foresee: atualiza o card (temperatura/responsável) ao qualificar.
   if (verdict === 'QUALIFIED' && prevVerdict !== 'QUALIFIED') {
@@ -934,7 +959,7 @@ async function notifyCloser(input: {
   collected: Record<string, unknown>;
   out: QualLlmOutput;
   qualState: { campaignName: string | null; summary: string | null };
-}): Promise<void> {
+}): Promise<boolean> {
   const { tid, conversation, config, collected, out, qualState } = input;
   try {
     const company = await prisma.company.findFirst({
@@ -953,7 +978,7 @@ async function notifyCloser(input: {
         },
         'closer não notificado: empresa sem telefone de closer válido',
       );
-      return;
+      return false;
     }
 
     const leadPhone = (
@@ -1003,8 +1028,10 @@ async function notifyCloser(input: {
       type: 'CLOSER_NOTIFIED',
       data: { closer: company?.closerName ?? null },
     });
+    return true;
   } catch (err) {
     logger.error({ err, companyId: conversation.companyId }, 'falha ao notificar o closer');
+    return false;
   }
 }
 
@@ -1173,7 +1200,13 @@ export async function generateReplyJob(job: {
   tenantId: string;
 }): Promise<void> {
   await runWithTenant(job.tenantId, async () => {
-    const r = await generateReply(job.conversationId);
+    // TRAVA por conversa: serializa qualificações da MESMA conversa. Se o lead
+    // manda várias mensagens em sequência, a próxima só roda depois que a
+    // anterior termina e relê o estado atualizado (histórico + collected +
+    // qualification) — sem respostas duplicadas nem dados sobrescritos.
+    const r = await withKeyedLock(`ai:${job.conversationId}`, () =>
+      generateReply(job.conversationId),
+    );
     // Info (não debug) para aparecer no log da nuvem e facilitar diagnóstico:
     // mostra se respondeu (mode) ou por que pulou (skipped).
     logger.info({ conversationId: job.conversationId, ...r }, 'ai.process concluído');
