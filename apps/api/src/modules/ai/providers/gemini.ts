@@ -1,6 +1,9 @@
+import { fetchWithTimeout } from '../../../lib/fetch';
 import { LlmError, type LlmProvider, type LlmRequest, type LlmResult } from './types';
 
 const DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+/** Teto de espera pela resposta do modelo (ver lib/fetch.ts). */
+const TIMEOUT_MS = 60_000;
 
 interface GeminiResponse {
   candidates?: { content?: { parts?: { text?: string }[] } }[];
@@ -30,19 +33,30 @@ export const geminiProvider: LlmProvider = {
         parts: [{ text: m.content }],
       }));
 
-    const res = await fetch(`${base}/models/${req.model}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
-        contents,
-        generationConfig: {
-          temperature: req.temperature,
-          maxOutputTokens: req.maxTokens,
-          ...(req.json ? { responseMimeType: 'application/json' } : {}),
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(
+        `${base}/models/${req.model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+            contents,
+            generationConfig: {
+              temperature: req.temperature,
+              maxOutputTokens: req.maxTokens,
+              ...(req.json ? { responseMimeType: 'application/json' } : {}),
+            },
+          }),
         },
-      }),
-    });
+        TIMEOUT_MS,
+        'Gemini',
+      );
+    } catch (err) {
+      // Rede/DNS/TLS/timeout: erro claro e RÁPIDO (não deixa a conversa travada).
+      throw new LlmError(504, err instanceof Error ? err.message : String(err));
+    }
 
     const data = (await res.json().catch(() => ({}))) as GeminiResponse;
     if (!res.ok) {

@@ -160,6 +160,47 @@ async function getOrCreateConversation(channel: Channel, contactId: string, remo
   return created;
 }
 
+/** Janela em que um eco `fromMe` ainda é considerado envio nosso. */
+const ECHO_WINDOW_MS = 10 * 60 * 1000;
+
+/** Texto comparável: sem diferença de espaços/quebras/caixa. */
+function normalizeForEcho(text: string | null | undefined): string {
+  return (text ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Procura, entre os envios RECENTES desta conversa feitos por nós (robô ou
+ * atendente pela plataforma), um cujo texto bata com o do eco `fromMe`.
+ *
+ * Por que compara TEXTO e não só `waMessageId is null`: o envio pela Evolution
+ * grava o waMessageId assim que a API responde, mas nem sempre esse id é o
+ * mesmo que volta no webhook (e o eco pode chegar duplicado). Quando isso
+ * acontecia, o eco da PRÓPRIA resposta do robô era lido como "humano assumiu"
+ * e a IA era desligada na conversa — o robô respondia uma vez e emudecia.
+ * Aqui, qualquer eco que repita um texto nosso recente é reconhecido como
+ * nosso, tenha ou não waMessageId gravado.
+ */
+async function findOurRecentOutbound(
+  conversationId: string,
+  content: string | null,
+  now: Date,
+): Promise<{ id: string; waMessageId: string | null } | null> {
+  const needle = normalizeForEcho(content);
+  if (!needle) return null;
+  const recent = await prisma.message.findMany({
+    where: {
+      conversationId,
+      direction: 'OUTBOUND',
+      deletedAt: null,
+      createdAt: { gte: new Date(now.getTime() - ECHO_WINDOW_MS) },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+    select: { id: true, content: true, waMessageId: true },
+  });
+  return recent.find((m) => normalizeForEcho(m.content) === needle) ?? null;
+}
+
 async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPayload) {
   const data = payload.data;
   const key = data?.key;
@@ -202,31 +243,34 @@ async function handleMessageUpsert(channel: Channel, payload: EvolutionWebhookPa
   // ainda não sincronizou, ou (b) alguém digitando no CELULAR do número conectado
   // (intervenção humana). Distinguimos pelo conteúdo/recência.
   if (fromMe) {
-    const ours = await prisma.message.findFirst({
-      where: {
-        conversationId: conversation.id,
-        direction: 'OUTBOUND',
-        waMessageId: null,
-        deletedAt: null,
-        createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) },
-        ...(content ? { content } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const ours = await findOurRecentOutbound(conversation.id, content, now);
     if (ours) {
-      // É o nosso próprio envio ecoando — só sincroniza o waMessageId e sai
-      // (não duplica a mensagem e NÃO pausa o robô).
-      await prisma.message
-        .update({ where: { id: ours.id }, data: { waMessageId } })
-        .catch(() => undefined);
+      // É o nosso próprio envio ecoando — só sincroniza o waMessageId (quando
+      // ainda não sincronizou) e sai: não duplica a mensagem e NÃO pausa o robô.
+      if (ours.waMessageId === null) {
+        await prisma.message
+          .update({ where: { id: ours.id }, data: { waMessageId } })
+          .catch(() => undefined);
+      }
       return;
     }
-    // Intervenção humana pelo celular → pausa a IA só nesta conversa.
-    logger.info(
-      { conversationId: conversation.id, waMessageId },
-      'ingest: intervenção humana pelo celular — pausando a IA nesta conversa',
-    );
-    await pauseAiForHumanHandoff(conversation.id, channel.tenantId);
+    if (!content?.trim()) {
+      // Evento fromMe SEM TEXTO: reação (👍), figurinha, áudio, enquete, recibo
+      // ou mensagem de protocolo (apagar para todos, mensagens temporárias...).
+      // Não dá para afirmar que é um humano CONVERSANDO — e pausar aqui deixava
+      // o robô mudo para sempre na conversa por causa de um emoji. Só registra.
+      logger.info(
+        { conversationId: conversation.id, waMessageId, messageType: data?.messageType },
+        'ingest: evento fromMe sem texto — registrado sem pausar a IA',
+      );
+    } else {
+      // Intervenção humana pelo celular → pausa a IA só nesta conversa.
+      logger.info(
+        { conversationId: conversation.id, waMessageId },
+        'ingest: intervenção humana pelo celular — pausando a IA nesta conversa',
+      );
+      await pauseAiForHumanHandoff(conversation.id, channel.tenantId);
+    }
   }
 
   await prisma.message.create({
@@ -400,10 +444,12 @@ export async function processInboundEvent(job: InboundJob): Promise<void> {
         logger.debug({ event }, 'evento de webhook ignorado');
     }
 
-    // Marca o evento como processado.
+    // Marca o evento como processado (casa pelo par evento+id — o mesmo id
+    // aparece em vários eventos; sem o `event` marcaríamos o registro errado).
     await prisma.webhookEvent.updateMany({
       where: {
         evolutionInstanceId: channel.id,
+        event: typeof job.payload.event === 'string' ? job.payload.event : 'unknown',
         externalId: job.payload.data?.key?.id ?? null,
         status: 'RECEIVED',
       },

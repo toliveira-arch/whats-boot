@@ -803,6 +803,10 @@ async function runQualification(input: {
     summary: out.summary ?? null,
     reasons,
     entry, // preserva o contexto de entrada (campanha/formulário) entre turnos
+    // Preserva a marca de "closer já avisado": este objeto SUBSTITUI o
+    // qualification inteiro no banco; sem carregar a flag, ela era apagada a
+    // cada turno e o closer voltava a ser notificado em toda mensagem.
+    closerNotifiedAt: prev.closerNotifiedAt ?? null,
     updatedAt: new Date().toISOString(),
   };
 
@@ -886,7 +890,31 @@ async function runQualification(input: {
     void updateForeseeCardOnQualify(conversationId, conversation.companyId).catch(() => undefined);
   }
 
-  if (!outboundText) return { skipped: 'empty', verdict };
+  if (!outboundText) {
+    // O modelo devolveu JSON sem "reply" (ou truncado no maxTokens). Sem rede de
+    // proteção o robô simplesmente não responde àquela mensagem — para o lead,
+    // "o robô parou". Se o roteiro ainda tem pergunta obrigatória pendente,
+    // repete a próxima pergunta e o atendimento segue.
+    const fallback =
+      verdict === 'IN_PROGRESS'
+        ? (effectiveScript(config, campaign).find(
+            (f) => f.required && !hasVal(mergedCollected[f.key]),
+          )?.question ?? '')
+        : '';
+    // Não repete a MESMA pergunta que já foi a última mensagem enviada.
+    const lastOutbound = [...history].reverse().find((m) => m.direction === 'OUTBOUND')?.content;
+    const same = (a: string, b: string) =>
+      a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!fallback || (lastOutbound && same(lastOutbound, fallback))) {
+      logger.warn({ conversationId, verdict }, 'qualificação: resposta vazia — nada a enviar');
+      return { skipped: 'empty', verdict };
+    }
+    logger.warn(
+      { conversationId, verdict },
+      'qualificação: resposta vazia — usando a próxima pergunta do roteiro',
+    );
+    outboundText = fallback;
+  }
 
   const min = Math.max(0, agent.minResponseSeconds);
   const max = Math.max(min, agent.maxResponseSeconds);

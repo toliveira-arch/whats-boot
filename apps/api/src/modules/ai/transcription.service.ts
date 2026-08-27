@@ -1,7 +1,11 @@
 import { prisma } from '../../lib/prisma';
 import { logger } from '../../lib/logger';
+import { fetchWithTimeout } from '../../lib/fetch';
 import { decryptSecret } from '../../lib/crypto';
 import { createEvolutionClient } from '../evolution/evolution.client';
+
+/** Teto de espera da transcrição (ver lib/fetch.ts). */
+const TIMEOUT_MS = 45_000;
 
 /** Transcreve áudio via OpenAI Whisper (multipart). */
 async function transcribeOpenAI(
@@ -16,11 +20,14 @@ async function transcribeOpenAI(
   form.append('model', 'whisper-1');
   form.append('language', 'pt');
   const base = (baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
-  const res = await fetch(`${base}/audio/transcriptions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
+  // Com timeout: a transcrição roda ANTES de a mensagem ser gravada; travada,
+  // a mensagem do lead nunca chega ao robô (ele parece ter parado de responder).
+  const res = await fetchWithTimeout(
+    `${base}/audio/transcriptions`,
+    { method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: form },
+    TIMEOUT_MS,
+    'Whisper',
+  );
   if (!res.ok) {
     logger.warn({ status: res.status }, 'transcrição OpenAI falhou');
     return null;
@@ -36,22 +43,27 @@ async function transcribeGemini(
   apiKey: string,
 ): Promise<string | null> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { inline_data: { mime_type: mimetype || 'audio/ogg', data: base64 } },
-            {
-              text: 'Transcreva este áudio em português. Responda apenas o texto, sem comentários.',
-            },
-          ],
-        },
-      ],
-    }),
-  });
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { inline_data: { mime_type: mimetype || 'audio/ogg', data: base64 } },
+              {
+                text: 'Transcreva este áudio em português. Responda apenas o texto, sem comentários.',
+              },
+            ],
+          },
+        ],
+      }),
+    },
+    TIMEOUT_MS,
+    'Gemini (áudio)',
+  );
   if (!res.ok) {
     logger.warn({ status: res.status }, 'transcrição Gemini falhou');
     return null;

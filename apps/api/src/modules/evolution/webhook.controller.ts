@@ -56,7 +56,9 @@ export const evolutionWebhookController = asyncHandler(async (req, res) => {
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        duplicate = true; // webhook reenviado — já registrado
+        // MESMO evento + MESMO id: reenvio do webhook, já registrado.
+        // (Eventos DIFERENTES com o mesmo id não colidem — ver @@unique no schema.)
+        duplicate = true;
       } else {
         throw err;
       }

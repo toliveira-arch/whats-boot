@@ -1712,7 +1712,7 @@ model WebhookEvent {
   tenantId            String?
   evolutionInstanceId String?
   event               String
-  externalId          String? // waMessageId (idempotência)
+  externalId          String? // waMessageId (idempotência POR EVENTO — ver @@unique abaixo)
   payload             Json
   status              WebhookStatus @default(RECEIVED)
   error               String?
@@ -1723,7 +1723,12 @@ model WebhookEvent {
   tenant            Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   evolutionInstance EvolutionInstance? @relation(fields: [evolutionInstanceId], references: [id], onDelete: SetNull)
 
-  @@unique([evolutionInstanceId, externalId])
+  // A chave de idempotência inclui o EVENTO: a Evolution manda vários eventos
+  // com a MESMA key.id (messages.upsert, messages.update/ack, send.message...).
+  // Sem o `event` no índice, o primeiro evento que chegasse com aquele id fazia
+  // todos os outros serem descartados como "duplicados" — inclusive o
+  // messages.upsert com a mensagem do lead, que então nunca chegava ao robô.
+  @@unique([evolutionInstanceId, event, externalId])
   @@index([tenantId])
   @@index([status])
   @@index([event])
