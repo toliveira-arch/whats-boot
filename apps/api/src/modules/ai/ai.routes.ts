@@ -5,6 +5,7 @@ import { requirePermissions } from '../../middlewares/authorize';
 import { validateBody } from '../../middlewares/validate';
 import { agentSchema, credentialSchema, testSchema } from './ai.validation';
 import {
+  diagnosticsController,
   getAgentController,
   listCredentialsController,
   setCredentialController,
@@ -27,3 +28,6 @@ aiRouter.put('/credentials', MANAGE, validateBody(credentialSchema), setCredenti
 
 aiRouter.post('/test', MANAGE, validateBody(testSchema), testController);
 aiRouter.post('/test-closer', MANAGE, testCloserController);
+
+// Diagnóstico do atendimento: leads aguardando + o motivo exato de cada um.
+aiRouter.get('/diagnostics', READ, diagnosticsController);

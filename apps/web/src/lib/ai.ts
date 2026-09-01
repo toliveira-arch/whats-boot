@@ -175,3 +175,49 @@ export function testCloser(
 ): Promise<{ sent: boolean; closerPhone: string; channelConnected: boolean }> {
   return authFetch(`/ai/test-closer${companyQuery(companyId)}`, { method: 'POST' });
 }
+
+export interface AiDiagnosisRow {
+  conversationId: string;
+  contato: string;
+  telefone: string | null;
+  origem: string;
+  veredito: string | null;
+  aguardando: boolean;
+  ultimaMensagemLead: string | null;
+  ultimaResposta: string | null;
+  code: string;
+  motivo: string;
+  ultimoErro: string | null;
+}
+
+export interface AiDiagnosis {
+  agora: string;
+  fuso: string;
+  agente: {
+    existe: boolean;
+    proprioDaEmpresa: boolean;
+    ativo: boolean;
+    modo: string | null;
+    horario: string | null;
+    dentroDoHorario: boolean;
+    provedor: string | null;
+    modelo: string | null;
+    credencialAtiva: boolean;
+    soLeadsDoCrm: boolean;
+    qualificacaoLigada: boolean;
+  };
+  canais: { nome: string; status: string; roboLigado: boolean }[];
+  integracoes: {
+    tipo: string;
+    ligada: boolean;
+    encaminhaAoSdr: boolean;
+    soMidiaPaga: boolean;
+    canal: string | null;
+  }[];
+  resumo: Record<string, number>;
+  conversas: AiDiagnosisRow[];
+}
+
+export function getDiagnostics(companyId: string): Promise<AiDiagnosis> {
+  return authFetch(`/ai/diagnostics${companyQuery(companyId)}`);
+}

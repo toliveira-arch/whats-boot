@@ -17,6 +17,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Fuso do negócio: sem isto o contêiner roda em UTC e o horário comercial
+      # do agente (ex.: 08:00–18:00) é avaliado 3h adiantado.
+      - key: TZ
+        value: America/Sao_Paulo
       # Site na mesma origem: API sob /api e Socket.IO na raiz.
       - key: VITE_API_URL
         value: /api

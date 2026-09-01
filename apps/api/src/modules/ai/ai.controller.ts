@@ -1,4 +1,5 @@
 import { asyncHandler } from '../../lib/http';
+import { HttpError } from '../../middlewares/error';
 import * as ai from './ai.service';
 
 /** Lê ?companyId=... da query (empresa selecionada no painel). */
@@ -31,4 +32,12 @@ export const testController = asyncHandler(async (req, res) => {
 
 export const testCloserController = asyncHandler(async (req, res) => {
   res.json(await ai.testCloser(companyIdOf(req)));
+});
+
+/** Diagnóstico: por que o robô não respondeu os leads desta empresa. */
+export const diagnosticsController = asyncHandler(async (req, res) => {
+  const companyId = typeof req.query.companyId === 'string' ? req.query.companyId.trim() : '';
+  if (!companyId) throw new HttpError(400, 'Informe a empresa (companyId)');
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  res.json(await ai.diagnoseCompany(companyId, limit));
 });

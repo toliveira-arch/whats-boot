@@ -1,4 +1,5 @@
 import { prisma, getTenantContext, runWithTenant, Prisma } from '@whats-boot/database';
+import { env } from '../../config/env';
 import { HttpError } from '../../middlewares/error';
 import { logger } from '../../lib/logger';
 import { withKeyedLock } from '../../lib/mutex';
@@ -186,10 +187,38 @@ export async function setCredential(provider: string, apiKey: string, baseUrl?: 
 // Geração de resposta (guardrails + provedor)
 // ---------------------------------------------------------------------------
 
+/**
+ * Hora local (HH:MM) no fuso configurado — NUNCA na hora do servidor.
+ *
+ * Na nuvem o contêiner roda em UTC (o Render não injeta TZ). Usando
+ * `new Date().getHours()`, um agente com horário 08:00–18:00 ficava ativo das
+ * 05:00 às 15:00 de Brasília: todo lead que chegava no fim da tarde caía em
+ * `skipped: 'outside-hours'` e NINGUÉM era atendido — sem erro nenhum no log.
+ */
+function localHhmm(now = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: env.TZ || 'America/Sao_Paulo',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(now);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+    let hour = get('hour');
+    if (hour === '24') hour = '00'; // alguns ambientes devolvem 24h
+    return `${hour.padStart(2, '0')}:${get('minute').padStart(2, '0')}`;
+  } catch {
+    const d = now;
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+}
+
 function withinActiveHours(from: string | null, to: string | null): boolean {
   if (!from || !to) return true;
-  const now = new Date();
-  const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const hhmm = localHhmm();
+  // Janela que vira o dia (ex.: 18:00–08:00) é um intervalo válido: antes,
+  // `hhmm >= from && hhmm <= to` era sempre falso e o robô nunca respondia.
+  if (from > to) return hhmm >= from || hhmm <= to;
   return hhmm >= from && hhmm <= to;
 }
 
@@ -373,6 +402,77 @@ function buildQualSystemPrompt(p: {
         .join('\n\n');
 }
 
+// ---------------------------------------------------------------------------
+// Travas de atendimento — FONTE ÚNICA de verdade
+//
+// As mesmas regras decidem se o robô responde (generateReply) e explicam por
+// que ele não respondeu (diagnóstico). Antes ficavam soltas dentro do
+// generateReply: para descobrir por que um lead não foi atendido só olhando o
+// log do servidor, linha por linha.
+// ---------------------------------------------------------------------------
+
+/** Motivo legível de cada código de "não respondeu". */
+export const AI_SKIP_REASONS: Record<string, string> = {
+  'conversation-not-found': 'conversa não encontrada (apagada?)',
+  'instance-ai-off': 'o robô está DESLIGADO no canal (Canais → Robô de IA)',
+  'conversation-ai-off':
+    'o robô foi desligado NESTA conversa (alguém assumiu pelo painel/celular, ou o lead entrou pelo CRM sem "encaminhar ao SDR")',
+  'agent-disabled': 'a empresa não tem agente de IA ativo',
+  'not-crm-lead':
+    'lead não veio do CRM (origem orgânica) e a trava "atender só leads do CRM" está ligada',
+  'mode-off': 'o modo do agente está OFF',
+  'outside-hours': 'fora do horário de atendimento configurado no agente',
+  'message-limit': 'limite de respostas automáticas por conversa atingido',
+  'no-credential': 'não há credencial ativa do provedor de IA',
+  'provider-error': 'o provedor de IA falhou ao gerar a resposta',
+  empty: 'o modelo devolveu uma resposta vazia',
+  'paused-during-generation': 'um humano assumiu enquanto a resposta era gerada',
+  ok: 'nada bloqueia o robô — ele deveria responder',
+};
+
+type GateConversation = {
+  aiEnabled: boolean | null;
+  aiMode: string | null;
+  origin: string;
+  leadVerdict: string | null;
+  evolutionInstance: { aiEnabled: boolean };
+};
+
+/** Modo efetivo: a conversa pode sobrescrever o modo global do agente. */
+function effectiveAiMode(conversation: { aiMode: string | null }, agent: AgentRecord): string {
+  return conversation.aiMode && conversation.aiMode !== 'OFF' ? conversation.aiMode : agent.mode;
+}
+
+/**
+ * Aplica as travas na ordem do atendimento. Devolve o motivo do bloqueio, ou
+ * null quando nada impede o robô de responder.
+ */
+function checkAiGates(
+  conversation: GateConversation,
+  agent: AgentRecord | null,
+): { code: string; motivo: string } | null {
+  const deny = (code: string) => ({ code, motivo: AI_SKIP_REASONS[code] ?? code });
+
+  // Isolamento de toggles: instância desligada > conversa desligada > agente.
+  if (!conversation.evolutionInstance.aiEnabled) return deny('instance-ai-off');
+  if (conversation.aiEnabled === false) return deny('conversation-ai-off');
+  if (!agent || !agent.isActive) return deny('agent-disabled');
+
+  // TRAVA: por padrão o robô só atende leads que entraram pelo CRM/RD Station
+  // (origin='CRM'). Contatos orgânicos (alguém que mandou msg no número) são
+  // ignorados. Conversas já engajadas (com veredito) continuam sendo atendidas
+  // para não cortar um atendimento em andamento. Desligável por empresa na IA.
+  const qCfg = (agent.qualification as { onlyCrmLeads?: boolean } | null) ?? null;
+  const onlyCrmLeads = qCfg?.onlyCrmLeads ?? true;
+  if (onlyCrmLeads && conversation.origin !== 'CRM' && conversation.leadVerdict == null) {
+    return deny('not-crm-lead');
+  }
+
+  if (effectiveAiMode(conversation, agent) === 'OFF') return deny('mode-off');
+  if (!withinActiveHours(agent.activeFrom, agent.activeTo)) return deny('outside-hours');
+  return null;
+}
+
 export async function generateReply(conversationId: string): Promise<GenerateResult> {
   const tid = tenantId();
   const conversation = await prisma.conversation.findFirst({
@@ -384,29 +484,14 @@ export async function generateReply(conversationId: string): Promise<GenerateRes
   });
   if (!conversation) return { skipped: 'conversation-not-found' };
 
-  // Isolamento de toggles: instância desligada > conversa desligada > agente.
-  if (!conversation.evolutionInstance.aiEnabled) return { skipped: 'instance-ai-off' };
-  if (conversation.aiEnabled === false) return { skipped: 'conversation-ai-off' };
-
   // Cada empresa tem o seu agente; usa o padrão do tenant como fallback.
   const agent = await resolveAgentForCompany(conversation.companyId);
-  if (!agent || !agent.isActive) return { skipped: 'agent-disabled' };
 
-  // TRAVA: por padrão o robô só atende leads que entraram pelo CRM/RD Station
-  // (origin='CRM'). Contatos orgânicos (alguém que mandou msg no número) são
-  // ignorados. Conversas já engajadas (com veredito) continuam sendo atendidas
-  // para não cortar um atendimento em andamento. Desligável por empresa na IA.
-  const qCfg = (agent.qualification as { onlyCrmLeads?: boolean } | null) ?? null;
-  const onlyCrmLeads = qCfg?.onlyCrmLeads ?? true;
-  if (onlyCrmLeads && conversation.origin !== 'CRM' && conversation.leadVerdict == null) {
-    return { skipped: 'not-crm-lead' };
-  }
-
-  // Modo efetivo: a conversa pode sobrescrever o modo global do agente.
-  const effectiveMode =
-    conversation.aiMode && conversation.aiMode !== 'OFF' ? conversation.aiMode : agent.mode;
-  if (effectiveMode === 'OFF') return { skipped: 'mode-off' };
-  if (!withinActiveHours(agent.activeFrom, agent.activeTo)) return { skipped: 'outside-hours' };
+  // Travas de atendimento (mesma fonte de verdade do diagnóstico).
+  const gate = checkAiGates(conversation, agent);
+  if (gate) return { skipped: gate.code };
+  if (!agent) return { skipped: 'agent-disabled' }; // já coberto por checkAiGates
+  const effectiveMode = effectiveAiMode(conversation, agent);
 
   if (agent.maxMessagesPerConversation != null) {
     const aiCount = await prisma.message.count({
@@ -1220,6 +1305,194 @@ export async function notifyCloserForConversation(conversationId: string): Promi
     data: { closer: company?.closerName ?? null, manual: true },
   });
   return { sent: true, closerPhone, channelConnected: channel.status === 'CONNECTED' };
+}
+
+// ---------------------------------------------------------------------------
+// Diagnóstico: "por que o robô não atendeu os leads desta empresa?"
+// ---------------------------------------------------------------------------
+
+export interface AiDiagnosisRow {
+  conversationId: string;
+  contato: string;
+  telefone: string | null;
+  origem: string;
+  veredito: string | null;
+  /** O lead falou e ninguém respondeu depois. */
+  aguardando: boolean;
+  ultimaMensagemLead: string | null;
+  ultimaResposta: string | null;
+  code: string;
+  motivo: string;
+  /** Último erro do provedor de IA registrado nesta conversa. */
+  ultimoErro: string | null;
+}
+
+export interface AiDiagnosis {
+  agora: string;
+  fuso: string;
+  /** Config que costuma explicar TODA a empresa de uma vez. */
+  agente: {
+    existe: boolean;
+    proprioDaEmpresa: boolean;
+    ativo: boolean;
+    modo: string | null;
+    horario: string | null;
+    dentroDoHorario: boolean;
+    provedor: string | null;
+    modelo: string | null;
+    credencialAtiva: boolean;
+    soLeadsDoCrm: boolean;
+    qualificacaoLigada: boolean;
+  };
+  canais: { nome: string; status: string; roboLigado: boolean }[];
+  integracoes: {
+    tipo: string;
+    ligada: boolean;
+    encaminhaAoSdr: boolean;
+    soMidiaPaga: boolean;
+    canal: string | null;
+  }[];
+  resumo: Record<string, number>;
+  conversas: AiDiagnosisRow[];
+}
+
+/**
+ * Explica, para UMA empresa, por que o robô não respondeu — sem chamar a IA.
+ * Aplica as MESMAS travas do atendimento (checkAiGates) em cada conversa e
+ * mostra a configuração que costuma derrubar a empresa inteira (canal com robô
+ * desligado, agente fora do horário, integração sem "encaminhar ao SDR"…).
+ */
+export async function diagnoseCompany(companyId: string, limit = 50): Promise<AiDiagnosis> {
+  const agent = await resolveAgentForCompany(companyId);
+  const ownAgent = await getAgent(companyId);
+  const credential = agent
+    ? await prisma.aiCredential.findFirst({
+        where: { provider: agent.provider, isActive: true, deletedAt: null },
+      })
+    : null;
+  const qCfg = (agent?.qualification as QualConfig | null) ?? null;
+
+  const canais = await prisma.evolutionInstance.findMany({
+    where: { companyId, deletedAt: null },
+    select: { id: true, name: true, status: true, aiEnabled: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const canalNome = (id: string | null) =>
+    id ? (canais.find((c) => c.id === id)?.name ?? '(canal removido)') : null;
+
+  const [rd, kommo, hook] = await Promise.all([
+    prisma.rdIntegration.findFirst({ where: { companyId, deletedAt: null } }),
+    prisma.kommoIntegration.findFirst({ where: { companyId, deletedAt: null } }),
+    prisma.webhookIntegration.findFirst({ where: { companyId, deletedAt: null } }),
+  ]);
+  const integracoes: AiDiagnosis['integracoes'] = [];
+  if (rd) {
+    integracoes.push({
+      tipo: 'RD Station',
+      ligada: rd.enabled,
+      encaminhaAoSdr: rd.handoffToSdr,
+      soMidiaPaga: rd.paidMediaOnly,
+      canal: canalNome(rd.channelId),
+    });
+  }
+  if (kommo) {
+    integracoes.push({
+      tipo: 'Kommo',
+      ligada: kommo.enabled,
+      encaminhaAoSdr: kommo.handoffToSdr,
+      soMidiaPaga: false,
+      canal: canalNome(kommo.channelId),
+    });
+  }
+  if (hook) {
+    integracoes.push({
+      tipo: hook.label || 'Webhook',
+      ligada: hook.enabled,
+      encaminhaAoSdr: hook.handoffToSdr,
+      soMidiaPaga: false,
+      canal: canalNome(hook.channelId),
+    });
+  }
+
+  // Conversas recentes da empresa em que o LEAD falou por último.
+  const conversas = await prisma.conversation.findMany({
+    where: { companyId, deletedAt: null, lastInboundAt: { not: null } },
+    orderBy: { lastInboundAt: 'desc' },
+    take: limit,
+    select: {
+      id: true,
+      aiEnabled: true,
+      aiMode: true,
+      origin: true,
+      leadVerdict: true,
+      lastInboundAt: true,
+      lastOutboundAt: true,
+      contact: { select: { name: true, pushName: true, phoneNumber: true } },
+      evolutionInstance: { select: { aiEnabled: true } },
+    },
+  });
+
+  // Último erro de IA por conversa (uma consulta só).
+  const erros = await prisma.aiUsageLog.findMany({
+    where: { conversationId: { in: conversas.map((c) => c.id) }, success: false },
+    orderBy: { createdAt: 'desc' },
+    select: { conversationId: true, error: true },
+  });
+  const erroPorConversa = new Map<string, string>();
+  for (const e of erros) {
+    if (e.conversationId && !erroPorConversa.has(e.conversationId)) {
+      erroPorConversa.set(e.conversationId, e.error ?? 'erro sem detalhe');
+    }
+  }
+
+  const resumo: Record<string, number> = {};
+  const linhas: AiDiagnosisRow[] = conversas.map((c) => {
+    const gate = checkAiGates(c, agent);
+    const code = gate?.code ?? 'ok';
+    const aguardando =
+      c.lastInboundAt != null && (c.lastOutboundAt == null || c.lastOutboundAt < c.lastInboundAt);
+    if (aguardando) resumo[code] = (resumo[code] ?? 0) + 1;
+    return {
+      conversationId: c.id,
+      contato: c.contact.name ?? c.contact.pushName ?? 'sem nome',
+      telefone: c.contact.phoneNumber,
+      origem: c.origin,
+      veredito: c.leadVerdict,
+      aguardando,
+      ultimaMensagemLead: c.lastInboundAt?.toISOString() ?? null,
+      ultimaResposta: c.lastOutboundAt?.toISOString() ?? null,
+      code,
+      motivo:
+        gate?.motivo ??
+        (aguardando
+          ? 'nada bloqueia o robô — a mensagem do lead pode não ter chegado (webhook da Evolution / canal desconectado) ou a geração falhou'
+          : AI_SKIP_REASONS.ok!),
+      ultimoErro: erroPorConversa.get(c.id) ?? null,
+    };
+  });
+
+  return {
+    agora: localHhmm(),
+    fuso: env.TZ,
+    agente: {
+      existe: Boolean(agent),
+      proprioDaEmpresa: Boolean(ownAgent),
+      ativo: Boolean(agent?.isActive),
+      modo: agent?.mode ?? null,
+      horario:
+        agent?.activeFrom && agent?.activeTo ? `${agent.activeFrom}–${agent.activeTo}` : null,
+      dentroDoHorario: withinActiveHours(agent?.activeFrom ?? null, agent?.activeTo ?? null),
+      provedor: agent?.provider ?? null,
+      modelo: agent?.model ?? null,
+      credencialAtiva: Boolean(credential),
+      soLeadsDoCrm: qCfg?.onlyCrmLeads ?? true,
+      qualificacaoLigada: Boolean(qCfg?.enabled),
+    },
+    canais: canais.map((c) => ({ nome: c.name, status: c.status, roboLigado: c.aiEnabled })),
+    integracoes,
+    resumo,
+    conversas: linhas,
+  };
 }
 
 /** Processa um job da fila ai.process dentro do contexto de tenant. */

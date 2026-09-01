@@ -47,6 +47,9 @@ export function AiSettings() {
   const [testMsg, setTestMsg] = useState('Olá, quero saber o preço.');
   const [testOut, setTestOut] = useState<string | null>(null);
 
+  const [diag, setDiag] = useState<ai.AiDiagnosis | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+
   // Carrega empresas e credenciais uma vez.
   useEffect(() => {
     listCompanies()
@@ -148,6 +151,22 @@ export function AiSettings() {
       );
     } catch (err) {
       setMsg(err instanceof ApiError ? err.message : 'Erro ao testar o closer');
+    }
+  }
+
+  async function runDiagnostics() {
+    if (!companyId) {
+      setMsg('Selecione a empresa.');
+      return;
+    }
+    setDiagLoading(true);
+    setMsg(null);
+    try {
+      setDiag(await ai.getDiagnostics(companyId));
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : 'Erro ao rodar o diagnóstico');
+    } finally {
+      setDiagLoading(false);
     }
   }
 
@@ -366,6 +385,103 @@ export function AiSettings() {
           Gerar resposta de teste
         </button>
         {testOut && <div className="test-out">{testOut}</div>}
+      </div>
+
+      <div className="card-form">
+        <h2>Diagnóstico do robô</h2>
+        <p className="sub">
+          Mostra os leads que falaram e ainda não receberam resposta — e o motivo exato de cada um.
+          Aplica as mesmas travas do atendimento real.
+        </p>
+        <button className="btn ghost" onClick={runDiagnostics} disabled={diagLoading}>
+          {diagLoading ? 'Verificando…' : 'Verificar atendimento'}
+        </button>
+
+        {diag && (
+          <div style={{ marginTop: 16 }}>
+            <h3>Configuração da empresa</h3>
+            <ul className="sub">
+              <li>
+                Agente: {diag.agente.existe ? (diag.agente.ativo ? 'ativo' : 'INATIVO') : 'NENHUM'}
+                {diag.agente.existe &&
+                  !diag.agente.proprioDaEmpresa &&
+                  ' (usando o padrão do tenant)'}
+                {diag.agente.modo && ` · modo ${diag.agente.modo}`}
+              </li>
+              <li>
+                Horário: {diag.agente.horario ?? 'sem restrição'}
+                {' · agora são '}
+                {diag.agora} ({diag.fuso}) —{' '}
+                {diag.agente.dentroDoHorario ? 'DENTRO do horário' : 'FORA do horário'}
+              </li>
+              <li>
+                Credencial do provedor ({diag.agente.provedor ?? '—'}):{' '}
+                {diag.agente.credencialAtiva ? 'ok' : 'AUSENTE'}
+              </li>
+              <li>
+                Atende só leads do CRM: {diag.agente.soLeadsDoCrm ? 'sim' : 'não'} · qualificação{' '}
+                {diag.agente.qualificacaoLigada ? 'ligada' : 'desligada'}
+              </li>
+              {diag.canais.map((c) => (
+                <li key={c.nome}>
+                  Canal {c.nome}: {c.status} · robô {c.roboLigado ? 'ligado' : 'DESLIGADO'}
+                </li>
+              ))}
+              {diag.integracoes.map((i) => (
+                <li key={i.tipo}>
+                  Integração {i.tipo}: {i.ligada ? 'ligada' : 'DESLIGADA'} · encaminha ao SDR:{' '}
+                  {i.encaminhaAoSdr ? 'sim' : 'NÃO (o robô não assume o lead)'}
+                  {i.soMidiaPaga && ' · só mídia paga'}
+                  {i.canal && ` · canal ${i.canal}`}
+                </li>
+              ))}
+            </ul>
+
+            <h3>Leads aguardando resposta</h3>
+            {diag.conversas.filter((c) => c.aguardando).length === 0 ? (
+              <p className="sub">Nenhum lead esperando resposta agora.</p>
+            ) : (
+              <table className="monitor-table">
+                <thead>
+                  <tr>
+                    <th>Contato</th>
+                    <th>Origem</th>
+                    <th>Última msg do lead</th>
+                    <th>Motivo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {diag.conversas
+                    .filter((c) => c.aguardando)
+                    .map((c) => (
+                      <tr key={c.conversationId}>
+                        <td>
+                          {c.contato}
+                          <br />
+                          <span className="sub">{c.telefone}</span>
+                        </td>
+                        <td>{c.origem}</td>
+                        <td>
+                          {c.ultimaMensagemLead
+                            ? new Date(c.ultimaMensagemLead).toLocaleString('pt-BR')
+                            : '—'}
+                        </td>
+                        <td>
+                          {c.motivo}
+                          {c.ultimoErro && (
+                            <>
+                              <br />
+                              <span className="sub">último erro: {c.ultimoErro}</span>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

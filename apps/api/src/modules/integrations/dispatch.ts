@@ -155,6 +155,15 @@ export interface DispatchResult {
  * (para a trava do robô) e a coloca no CRM ao vivo.
  */
 export async function dispatchLead(input: DispatchInput): Promise<DispatchResult> {
+  // Canal: o configurado na integração; sem ele, o da empresa — dando
+  // preferência EXPLÍCITA ao que está CONECTADO. O `orderBy: status asc` antigo
+  // ordenava pela ordem de DECLARAÇÃO do enum no Postgres (CREATED, CONNECTING,
+  // QRCODE, CONNECTED, DISCONNECTED, FAILED), ou seja, escolhia um canal ainda
+  // em QR Code ANTES do conectado — e a 1ª mensagem do lead falhava no envio.
+  const fallbackWhere = {
+    deletedAt: null,
+    ...(input.companyId ? { companyId: input.companyId } : {}),
+  };
   const channel =
     (input.channelId
       ? await prisma.evolutionInstance.findFirst({
@@ -162,8 +171,12 @@ export async function dispatchLead(input: DispatchInput): Promise<DispatchResult
         })
       : null) ??
     (await prisma.evolutionInstance.findFirst({
-      where: { deletedAt: null, ...(input.companyId ? { companyId: input.companyId } : {}) },
-      orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+      where: { ...fallbackWhere, status: 'CONNECTED' },
+      orderBy: { createdAt: 'asc' },
+    })) ??
+    (await prisma.evolutionInstance.findFirst({
+      where: fallbackWhere,
+      orderBy: { createdAt: 'asc' },
     }));
   if (!channel) return { status: 'failed', detail: 'no-channel' };
 
