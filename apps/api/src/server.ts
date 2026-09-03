@@ -40,7 +40,17 @@ export function createApp(): Express {
   app.use(helmet());
   app.use(cors({ origin: corsOrigins, credentials: true }));
   app.use(compression());
-  app.use(express.json({ limit: '10mb' }));
+  // Guarda o corpo CRU: a validação da assinatura do webhook da Meta
+  // (X-Hub-Signature-256) é HMAC sobre os bytes exatos recebidos — reserializar
+  // o JSON muda o hash e invalida toda requisição legítima.
+  app.use(
+    express.json({
+      limit: '10mb',
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 

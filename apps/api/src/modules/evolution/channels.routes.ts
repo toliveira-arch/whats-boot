@@ -5,12 +5,14 @@ import { requirePermissions } from '../../middlewares/authorize';
 import { validateBody } from '../../middlewares/validate';
 import {
   createChannelSchema,
+  createCloudChannelSchema,
   setChannelAiSchema,
   setWebhookUrlSchema,
   testConnectionSchema,
 } from './channels.validation';
 import {
   createChannelController,
+  createCloudChannelController,
   deleteChannelController,
   diagnosticsController,
   getAlertsController,
@@ -49,6 +51,14 @@ channelsRouter.post(
   requirePermissions('channels.manage'),
   validateBody(createChannelSchema),
   createChannelController,
+);
+
+// Canal oficial (WhatsApp Cloud API / WABA) — sem QR, só credenciais da Meta.
+channelsRouter.post(
+  '/cloud',
+  requirePermissions('channels.manage'),
+  validateBody(createCloudChannelSchema),
+  createCloudChannelController,
 );
 
 channelsRouter.get('/:channelId/qrcode', requirePermissions('channels.manage'), qrCodeController);

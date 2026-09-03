@@ -988,6 +988,11 @@ model EvolutionInstance {
   webhookToken    String                  @unique
   webhookUrl      String?
   integration     String                  @default("WHATSAPP-BAILEYS")
+  // Cloud API oficial (integration = "WHATSAPP-CLOUD"): identificadores da Meta.
+  // phoneNumberId roteia o webhook (a Meta manda um POST por APP, não por canal,
+  // então é por ele que descobrimos de qual canal o evento é).
+  phoneNumberId   String?                 @unique
+  wabaId          String?
   settings        Json?
   connectedAt     DateTime?
   disconnectedAt  DateTime?
@@ -1008,6 +1013,7 @@ model EvolutionInstance {
   @@index([companyId])
   @@index([status])
   @@index([deletedAt])
+  @@index([integration])
 }
 
 // =============================================================================

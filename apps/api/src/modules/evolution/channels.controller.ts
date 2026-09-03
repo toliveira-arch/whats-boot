@@ -27,6 +27,11 @@ export const createChannelController = asyncHandler(async (req, res) => {
   res.status(201).json(result);
 });
 
+export const createCloudChannelController = asyncHandler(async (req, res) => {
+  const result = await channels.createCloudChannel(req.body);
+  res.status(201).json(result);
+});
+
 export const qrCodeController = asyncHandler(async (req, res) => {
   res.json(await channels.getQrCode(req.params.channelId!));
 });

@@ -18,6 +18,15 @@ interface CreateChannelInput {
   phoneNumber?: string;
 }
 
+interface CreateCloudChannelInput {
+  companyId: string;
+  name: string;
+  phoneNumberId: string;
+  wabaId: string;
+  accessToken: string;
+  phoneNumber?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Configuração de alertas (WhatsApp para avisar quando um canal desconectar)
 // ---------------------------------------------------------------------------
@@ -130,6 +139,9 @@ function publicSelect() {
     profileName: true,
     status: true,
     aiEnabled: true,
+    integration: true,
+    phoneNumberId: true,
+    wabaId: true,
     createdAt: true,
     connectedAt: true,
   } as const;
@@ -214,6 +226,82 @@ export async function testConnection(baseUrl: string, apiKey: string): Promise<{
       cause: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+/**
+ * Cadastra um canal WhatsApp Cloud API (WABA oficial da Meta).
+ *
+ * Diferente do Evolution, aqui não há instância para provisionar nem QR Code
+ * para ler: o número já existe na Meta e o vínculo é feito pelas credenciais.
+ * O webhook também não é configurado por canal — a Meta usa uma URL única por
+ * app (veja `/api/webhooks/whatsapp/cloud`), e é o phoneNumberId que diz de
+ * qual canal cada evento é. Por isso ele é único no banco.
+ *
+ * Já nasce CONNECTED: não existe estado de conexão para manter — se as
+ * credenciais valem, o número envia e recebe.
+ */
+export async function createCloudChannel(input: CreateCloudChannelInput) {
+  const company = await prisma.company.findFirst({
+    where: { id: input.companyId, deletedAt: null },
+    select: { id: true, tenantId: true },
+  });
+  if (!company) {
+    throw new HttpError(404, 'Empresa não encontrada');
+  }
+
+  // phoneNumberId é a chave de roteamento do webhook: duplicado faria mensagens
+  // caírem no canal errado, então bloqueia antes de gravar.
+  const clash = await runAsSystem(() =>
+    prisma.evolutionInstance.findFirst({
+      where: { phoneNumberId: input.phoneNumberId },
+      select: { id: true, deletedAt: true },
+    }),
+  );
+  if (clash) {
+    if (!clash.deletedAt) {
+      throw new HttpError(409, 'Este número da Meta já está vinculado a outro canal.');
+    }
+    // Canal excluído: libera o identificador para reaproveitar o número.
+    await prisma.evolutionInstance.update({
+      where: { id: clash.id },
+      data: { phoneNumberId: null },
+    });
+  }
+
+  const webhookToken = crypto.randomBytes(24).toString('hex');
+
+  const channel = await prisma.evolutionInstance.create({
+    data: {
+      tenantId: company.tenantId,
+      companyId: input.companyId,
+      name: input.name,
+      // instanceName não é usado pela Cloud API, mas é obrigatório e único no
+      // schema — deriva do phoneNumberId para não colidir com canais Evolution.
+      instanceName: `cloud_${input.phoneNumberId}`,
+      baseUrl: 'https://graph.facebook.com',
+      apiKeyEncrypted: encryptSecret(input.accessToken),
+      phoneNumber: input.phoneNumber,
+      integration: messaging.CLOUD_INTEGRATION,
+      phoneNumberId: input.phoneNumberId,
+      wabaId: input.wabaId,
+      webhookToken,
+      status: 'CONNECTED',
+      connectedAt: new Date(),
+    },
+    select: publicSelect(),
+  });
+
+  logger.info(
+    { channelId: channel.id, phoneNumberId: input.phoneNumberId },
+    'canal WhatsApp Cloud API cadastrado',
+  );
+
+  return {
+    channel,
+    // A URL é a mesma para todos os canais Cloud do app — devolvida aqui só
+    // para facilitar o cadastro no painel da Meta.
+    webhookUrl: `${env.API_PUBLIC_URL.replace(/\/$/, '')}/api/webhooks/whatsapp/cloud`,
+  };
 }
 
 /**

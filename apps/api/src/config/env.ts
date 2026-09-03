@@ -69,6 +69,17 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
 
+  // WhatsApp Cloud API (Meta). Só necessários para canais oficiais (WABA);
+  // canais Baileys/Evolution seguem funcionando sem nada disso definido.
+  // - VERIFY_TOKEN: string que VOCÊ escolhe e repete no painel da Meta ao
+  //   cadastrar o webhook (a Meta devolve no desafio do GET).
+  // - APP_SECRET: "Chave secreta do app" (Configurações do app > Básico).
+  //   Sem ela a assinatura X-Hub-Signature-256 não é conferida — em produção
+  //   isso é recusado, porque a URL do webhook é pública.
+  WHATSAPP_CLOUD_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_CLOUD_APP_SECRET: z.string().optional(),
+  WHATSAPP_CLOUD_API_VERSION: z.string().default('v25.0'),
+
   // Secret opcional para liberar o bloco GLOBAL (cross-tenant) da rota de
   // verificação /api/admin/health/patch-a via header X-Admin-Secret. Sem esta
   // var definida, o bloco global nunca é retornado.

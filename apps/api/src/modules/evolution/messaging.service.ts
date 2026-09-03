@@ -5,9 +5,13 @@ import { broadcastToTenant } from '../../realtime/emitter';
 import { enqueueOrRun, QUEUE_NAMES } from '../../queues';
 import { logger } from '../../lib/logger';
 import { createEvolutionClient, type SendMediaBody } from './evolution.client';
+import { createCloudApiClient } from './cloudapi.client';
 import { recordEvent } from '../events/events.service';
 
 type MediaType = SendMediaBody['mediatype'];
+
+/** Valor de `integration` que marca um canal WhatsApp Cloud API (Meta). */
+export const CLOUD_INTEGRATION = 'WHATSAPP-CLOUD';
 
 export interface OutboundJob {
   tenantId: string;
@@ -329,7 +333,13 @@ export async function processOutbound(job: OutboundJob): Promise<void> {
   await runWithTenant(job.tenantId, async () => {
     const channel = await prisma.evolutionInstance.findFirst({
       where: { id: job.channelId },
-      select: { instanceName: true, baseUrl: true, apiKeyEncrypted: true },
+      select: {
+        instanceName: true,
+        baseUrl: true,
+        apiKeyEncrypted: true,
+        integration: true,
+        phoneNumberId: true,
+      },
     });
     if (!channel) {
       await prisma.message.update({
@@ -342,23 +352,50 @@ export async function processOutbound(job: OutboundJob): Promise<void> {
     try {
       // Dentro do try: se a apikey não descriptografar (ex.: chave trocada),
       // a mensagem é marcada como FAILED com o erro, em vez de falhar em silêncio.
-      const client = createEvolutionClient(channel.baseUrl, decryptSecret(channel.apiKeyEncrypted));
-      const res =
-        job.kind === 'text'
-          ? await client.sendText(channel.instanceName, {
-              number: job.number,
-              text: job.text ?? '',
-            })
-          : await client.sendMedia(channel.instanceName, {
-              number: job.number,
-              mediatype: job.mediatype ?? 'document',
-              media: job.media ?? '',
-              mimetype: job.mimetype,
-              fileName: job.fileName,
-              caption: job.caption,
-            });
+      const secret = decryptSecret(channel.apiKeyEncrypted);
+      const isCloud = channel.integration === CLOUD_INTEGRATION;
 
-      const waMessageId = (res as { key?: { id?: string } }).key?.id ?? null;
+      if (isCloud && !channel.phoneNumberId) {
+        throw new Error('Canal Cloud API sem phoneNumberId configurado');
+      }
+
+      // Envio: Cloud API oficial (Meta) ou Evolution/Baileys. As duas respostas
+      // carregam o id da mensagem em lugares diferentes.
+      let res: unknown;
+      if (isCloud) {
+        const cloud = createCloudApiClient(channel.phoneNumberId!, secret);
+        res =
+          job.kind === 'text'
+            ? await cloud.sendText({ number: job.number, text: job.text ?? '' })
+            : await cloud.sendMedia({
+                number: job.number,
+                mediatype: job.mediatype ?? 'document',
+                media: job.media ?? '',
+                mimetype: job.mimetype,
+                fileName: job.fileName,
+                caption: job.caption,
+              });
+      } else {
+        const client = createEvolutionClient(channel.baseUrl, secret);
+        res =
+          job.kind === 'text'
+            ? await client.sendText(channel.instanceName, {
+                number: job.number,
+                text: job.text ?? '',
+              })
+            : await client.sendMedia(channel.instanceName, {
+                number: job.number,
+                mediatype: job.mediatype ?? 'document',
+                media: job.media ?? '',
+                mimetype: job.mimetype,
+                fileName: job.fileName,
+                caption: job.caption,
+              });
+      }
+
+      const waMessageId = isCloud
+        ? ((res as { messages?: { id?: string }[] }).messages?.[0]?.id ?? null)
+        : ((res as { key?: { id?: string } }).key?.id ?? null);
       const now = new Date();
       try {
         await prisma.message.update({
@@ -384,7 +421,7 @@ export async function processOutbound(job: OutboundJob): Promise<void> {
     } catch (err) {
       logger.error(
         { err, messageId: job.messageId, channelId: job.channelId },
-        'falha ao enviar mensagem via Evolution (apikey/baseUrl/conexão?)',
+        'falha ao enviar mensagem (token/baseUrl/conexão?)',
       );
       await prisma.message.update({
         where: { id: job.messageId },
